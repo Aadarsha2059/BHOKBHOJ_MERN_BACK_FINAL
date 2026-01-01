@@ -370,6 +370,21 @@ exports.registerUser = async (req, res) => {
   sanitizeXSS(req, res, () => {});
   */
   
+  // 🔍 BURP SUITE TESTING: Log registration request details
+  console.log('\n🔍 REGISTRATION REQUEST INTERCEPTED:');
+  console.log('═══════════════════════════════════════');
+  console.log('📧 Email:', req.body.email);
+  console.log('👤 Username:', req.body.username);
+  console.log('🔑 Password:', req.body.password);
+  console.log('🔑 Confirm Password:', req.body.confirmpassword);
+  console.log('👨‍💼 Full Name:', req.body.fullname);
+  console.log('📱 Phone:', req.body.phone);
+  console.log('🏠 Address:', req.body.address);
+  console.log('🌐 Origin:', req.headers.origin);
+  console.log('🔗 Referer:', req.headers.referer);
+  console.log('🕐 Timestamp:', new Date().toISOString());
+  console.log('═══════════════════════════════════════\n');
+  
   const { fullname, username, email, password, confirmpassword, phone, address } = req.body;
 
   // Only username, email and password are required
@@ -409,6 +424,15 @@ exports.registerUser = async (req, res) => {
 
     await newUser.save();
     console.log('User registered successfully:', newUser.username);
+
+    // 🔍 BURP SUITE TESTING: Log registration response
+    console.log('\n✅ REGISTRATION RESPONSE SENT:');
+    console.log('═══════════════════════════════════════');
+    console.log('📧 Registered Email:', newUser.email);
+    console.log('👤 Registered Username:', newUser.username);
+    console.log('🆔 User ID:', newUser._id);
+    console.log('🕐 Registration Time:', newUser.createdAt || new Date().toISOString());
+    console.log('═══════════════════════════════════════\n');
 
     return res.status(201).json({ 
       success: true, 

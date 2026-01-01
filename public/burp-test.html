@@ -19,6 +19,20 @@
     <h1>🔍 BhokBhoj - Burp Suite Security Testing</h1>
     <p>Use this page to test API endpoints and intercept requests in Burp Suite.</p>
 
+    <!-- Registration Test -->
+    <div class="test-section">
+        <h3>🆕 Registration Test</h3>
+        <input type="text" id="regFullname" placeholder="Full Name" value="John Doe">
+        <input type="text" id="regUsername" placeholder="Username" value="testuser123">
+        <input type="email" id="regEmail" placeholder="Email" value="test@bhokbhoj.com">
+        <input type="password" id="regPassword" placeholder="Password" value="testpass123">
+        <input type="password" id="regConfirmPassword" placeholder="Confirm Password" value="testpass123">
+        <input type="text" id="regPhone" placeholder="Phone" value="9876543210">
+        <textarea id="regAddress" placeholder="Address">Kathmandu, Nepal</textarea>
+        <button onclick="testRegistration()">Test Registration</button>
+        <div id="registrationResponse" class="response"></div>
+    </div>
+
     <!-- Login Test -->
     <div class="test-section">
         <h3>1. Login Test</h3>
@@ -101,6 +115,7 @@
     <!-- Real API Tests -->
     <div class="test-section">
         <h3>9. Real API Tests (Use these for actual interception)</h3>
+        <button onclick="realRegistration()">Real Registration API</button>
         <button onclick="realLogin()">Real Login API</button>
         <button onclick="realOTP()">Real OTP API</button>
         <button onclick="realDashboard()">Real Dashboard API</button>
@@ -116,6 +131,31 @@
             const element = document.getElementById(elementId);
             element.textContent = JSON.stringify(data, null, 2);
             element.className = `response ${isError ? 'error' : 'success'}`;
+        }
+
+        async function testRegistration() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        fullname: document.getElementById('regFullname').value,
+                        username: document.getElementById('regUsername').value,
+                        email: document.getElementById('regEmail').value,
+                        password: document.getElementById('regPassword').value,
+                        confirmpassword: document.getElementById('regConfirmPassword').value,
+                        phone: document.getElementById('regPhone').value,
+                        address: document.getElementById('regAddress').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('registrationResponse', data);
+            } catch (error) {
+                showResponse('registrationResponse', { error: error.message }, true);
+            }
         }
 
         async function testLogin() {
@@ -314,6 +354,31 @@
         }
 
         // Real API calls for actual interception
+        async function realRegistration() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        fullname: document.getElementById('regFullname').value,
+                        username: document.getElementById('regUsername').value + Math.floor(Math.random() * 1000), // Make unique
+                        email: document.getElementById('regEmail').value.replace('@', Math.floor(Math.random() * 1000) + '@'),
+                        password: document.getElementById('regPassword').value,
+                        confirmpassword: document.getElementById('regConfirmPassword').value,
+                        phone: document.getElementById('regPhone').value,
+                        address: document.getElementById('regAddress').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
         async function realLogin() {
             try {
                 const response = await fetch(`${API_BASE}/api/auth/login`, {

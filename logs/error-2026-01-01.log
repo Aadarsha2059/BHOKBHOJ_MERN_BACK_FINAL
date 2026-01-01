@@ -2,3 +2,7 @@
 {"ip":"127.0.0.1","level":"error","message":"POST /api/auth/verify-otp","responseTime":46,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 13:58:50","userId":null}
 {"ip":"127.0.0.1","level":"error","message":"POST /api/cart/add","responseTime":13,"service":"bhokbhoj-api","statusCode":401,"timestamp":"2026-01-01 14:00:10","userId":null}
 {"ip":"127.0.0.1","level":"error","message":"POST /api/auth/login","responseTime":228,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2026-01-01 14:13:09","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/register","responseTime":16,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 14:33:45","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/register","responseTime":7,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 14:34:14","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/register","responseTime":9,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 14:34:44","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/register","responseTime":5,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 14:35:37","userId":null}
