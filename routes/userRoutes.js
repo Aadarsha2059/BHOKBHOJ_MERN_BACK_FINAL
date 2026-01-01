@@ -28,8 +28,8 @@ router.post("/verify-otp", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, verifyO
 router.get("/me", authenticateUser, getCurrentUser);
 
 // Update user info with validation and security
-// Assuming you use :id to identify which user to update
-router.put("/update/:id", authenticateUser, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUser);
+// ✅ IDOR FIX: Removed :id parameter - uses JWT token to identify user
+router.put("/update", authenticateUser, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUser);
 
 // Forgot password - send reset link with security
 router.post("/forgot-password", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, sendResetLink);

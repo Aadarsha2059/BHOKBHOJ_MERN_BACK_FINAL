@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BhokBhoj - Burp Suite Testing</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 3px; }
+        .response { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 3px; white-space: pre-wrap; }
+        .error { background: #f8d7da; color: #721c24; }
+        .success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <h1>🔍 BhokBhoj - Burp Suite Security Testing</h1>
+    <p>Use this page to test API endpoints and intercept requests in Burp Suite.</p>
+
+    <!-- Login Test -->
+    <div class="test-section">
+        <h3>1. Login Test</h3>
+        <input type="text" id="username" placeholder="Username" value="testuser">
+        <input type="password" id="password" placeholder="Password" value="testpass123">
+        <button onclick="testLogin()">Test Login</button>
+        <div id="loginResponse" class="response"></div>
+    </div>
+
+    <!-- OTP Verification Test -->
+    <div class="test-section">
+        <h3>2. OTP Verification Test</h3>
+        <input type="email" id="email" placeholder="Email" value="test@bhokbhoj.com">
+        <input type="text" id="otp" placeholder="OTP Code" value="123456">
+        <button onclick="testOTP()">Test OTP Verification</button>
+        <div id="otpResponse" class="response"></div>
+    </div>
+
+    <!-- Dashboard Test -->
+    <div class="test-section">
+        <h3>3. Dashboard Data Test</h3>
+        <input type="text" id="authToken" placeholder="Authorization Token (Bearer token)" value="Bearer test-jwt-token-here">
+        <button onclick="testDashboard()">Test Dashboard</button>
+        <div id="dashboardResponse" class="response"></div>
+    </div>
+
+    <!-- Cart Test -->
+    <div class="test-section">
+        <h3>4. Add to Cart Test</h3>
+        <input type="text" id="productId" placeholder="Product ID" value="674eff48">
+        <input type="number" id="quantity" placeholder="Quantity" value="2">
+        <button onclick="testAddToCart()">Test Add to Cart</button>
+        <div id="cartResponse" class="response"></div>
+    </div>
+
+    <!-- Order Test -->
+    <div class="test-section">
+        <h3>5. Create Order Test</h3>
+        <select id="paymentMethod">
+            <option value="cash">Cash on Delivery</option>
+            <option value="online">Online Payment</option>
+        </select>
+        <textarea id="deliveryInstructions" placeholder="Delivery Instructions">Please deliver to main gate</textarea>
+        <button onclick="testCreateOrder()">Test Create Order</button>
+        <div id="orderResponse" class="response"></div>
+    </div>
+
+    <!-- Real API Tests -->
+    <div class="test-section">
+        <h3>6. Profile Update Test</h3>
+        <input type="text" id="fullname" placeholder="Full Name" value="John Doe">
+        <input type="email" id="profileEmail" placeholder="Email" value="john@bhokbhoj.com">
+        <input type="text" id="phone" placeholder="Phone" value="9876543210">
+        <textarea id="address" placeholder="Address">Kathmandu, Nepal</textarea>
+        <button onclick="testProfileUpdate()">Test Profile Update</button>
+        <div id="profileResponse" class="response"></div>
+    </div>
+
+    <!-- Password Change Test -->
+    <div class="test-section">
+        <h3>7. Password Change Test</h3>
+        <input type="password" id="currentPassword" placeholder="Current Password" value="oldpass123">
+        <input type="password" id="newPassword" placeholder="New Password" value="newpass456">
+        <button onclick="testPasswordChange()">Test Password Change</button>
+        <div id="passwordResponse" class="response"></div>
+    </div>
+
+    <!-- Cart Management Tests -->
+    <div class="test-section">
+        <h3>8. Cart Management Tests</h3>
+        <button onclick="testGetCart()">Get Cart</button>
+        <input type="text" id="updateProductId" placeholder="Product ID to Update" value="674eff48">
+        <input type="number" id="updateQuantity" placeholder="New Quantity" value="3">
+        <button onclick="testUpdateCart()">Update Cart Quantity</button>
+        <input type="text" id="removeProductId" placeholder="Product ID to Remove" value="674eff49">
+        <button onclick="testRemoveFromCart()">Remove from Cart</button>
+        <div id="cartManagementResponse" class="response"></div>
+    </div>
+
+    <!-- Real API Tests -->
+    <div class="test-section">
+        <h3>9. Real API Tests (Use these for actual interception)</h3>
+        <button onclick="realLogin()">Real Login API</button>
+        <button onclick="realOTP()">Real OTP API</button>
+        <button onclick="realDashboard()">Real Dashboard API</button>
+        <button onclick="realAddToCart()">Real Add to Cart API</button>
+        <button onclick="realCreateOrder()">Real Create Order API</button>
+        <div id="realResponse" class="response"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5050';
+
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `response ${isError ? 'error' : 'success'}`;
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('loginResponse', data);
+            } catch (error) {
+                showResponse('loginResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testOTP() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/verify-otp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        otp: document.getElementById('otp').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('otpResponse', data);
+            } catch (error) {
+                showResponse('otpResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testDashboard() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/dashboard`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    }
+                });
+                const data = await response.json();
+                showResponse('dashboardResponse', data);
+            } catch (error) {
+                showResponse('dashboardResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testAddToCart() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/cart/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        productId: document.getElementById('productId').value,
+                        quantity: parseInt(document.getElementById('quantity').value)
+                    })
+                });
+                const data = await response.json();
+                showResponse('cartResponse', data);
+            } catch (error) {
+                showResponse('cartResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testCreateOrder() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/orders/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        paymentMethod: document.getElementById('paymentMethod').value,
+                        deliveryInstructions: document.getElementById('deliveryInstructions').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('orderResponse', data);
+            } catch (error) {
+                showResponse('orderResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testProfileUpdate() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/profile/update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        fullname: document.getElementById('fullname').value,
+                        email: document.getElementById('profileEmail').value,
+                        phone: document.getElementById('phone').value,
+                        address: document.getElementById('address').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('profileResponse', data);
+            } catch (error) {
+                showResponse('profileResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testPasswordChange() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/password/change`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        currentPassword: document.getElementById('currentPassword').value,
+                        newPassword: document.getElementById('newPassword').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('passwordResponse', data);
+            } catch (error) {
+                showResponse('passwordResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testGetCart() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/cart`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    }
+                });
+                const data = await response.json();
+                showResponse('cartManagementResponse', data);
+            } catch (error) {
+                showResponse('cartManagementResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testUpdateCart() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/cart/update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        productId: document.getElementById('updateProductId').value,
+                        quantity: parseInt(document.getElementById('updateQuantity').value)
+                    })
+                });
+                const data = await response.json();
+                showResponse('cartManagementResponse', data);
+            } catch (error) {
+                showResponse('cartManagementResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testRemoveFromCart() {
+            try {
+                const response = await fetch(`${API_BASE}/api/test/cart/remove/${document.getElementById('removeProductId').value}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    }
+                });
+                const data = await response.json();
+                showResponse('cartManagementResponse', data);
+            } catch (error) {
+                showResponse('cartManagementResponse', { error: error.message }, true);
+            }
+        }
+
+        // Real API calls for actual interception
+        async function realLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
+        async function realOTP() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/verify-otp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        otp: document.getElementById('otp').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
+        async function realDashboard() {
+            try {
+                const response = await fetch(`${API_BASE}/api/dashboard/stats`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    }
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
+        async function realAddToCart() {
+            try {
+                const response = await fetch(`${API_BASE}/api/cart/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        productId: document.getElementById('productId').value,
+                        quantity: parseInt(document.getElementById('quantity').value)
+                    })
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
+        async function realCreateOrder() {
+            try {
+                const response = await fetch(`${API_BASE}/api/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': document.getElementById('authToken').value,
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        paymentMethod: document.getElementById('paymentMethod').value,
+                        deliveryInstructions: document.getElementById('deliveryInstructions').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('realResponse', data);
+            } catch (error) {
+                showResponse('realResponse', { error: error.message }, true);
+            }
+        }
+
+        // Auto-populate some test data
+        window.onload = function() {
+            console.log('🔍 Burp Suite test page loaded');
+            console.log('📝 Make sure Burp Suite is configured to intercept:');
+            console.log('   - POST requests');
+            console.log('   - Target scope: http://localhost:5050/*');
+        };
+    </script>
+</body>
+</html>

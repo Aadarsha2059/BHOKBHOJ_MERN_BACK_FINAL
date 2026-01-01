@@ -1,0 +1,13 @@
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":31,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 13:55:19","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":8,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 13:55:44","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":31,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 13:56:07","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":11,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 13:56:57","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":6,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 13:57:04","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":9,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:00:15","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":5,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:03:21","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":4,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:04:06","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/products?page=1&limit=12&search=&category=&sortBy=name&sortOrder=asc","responseTime":46,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:04:06","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/categories","responseTime":9,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:04:06","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":9,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:04:17","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":5,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 14:04:50","userId":null}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":16,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2025-12-29 15:47:17","userId":null}

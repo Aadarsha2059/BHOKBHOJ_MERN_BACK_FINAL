@@ -85,16 +85,33 @@ const forceHTTPS = (req, res, next) => {
 /**
  * CORS configuration for secure communication
  * ✅ SECURE: Whitelist-based approach for all environments
+ * ✅ BURP SUITE COMPATIBLE: Allows security testing tools
  */
 const corsOptions = {
     origin: function (origin, callback) {
         // Define allowed origins for all environments
         const allowedOrigins = [
-            // Development origins
+            // Development origins - Frontend
             'http://localhost:5173',
             'http://localhost:3000',
             'http://127.0.0.1:5173',
             'http://127.0.0.1:3000',
+            
+            // Additional development ports
+            'http://localhost:8080',
+            'http://localhost:8081',
+            'http://127.0.0.1:8080',
+            'http://127.0.0.1:8081',
+            
+            // Burp Suite embedded browser origins
+            'http://burpsuite',
+            'http://127.0.0.1:8080',
+            'http://localhost:8080',
+            
+            // Chrome/Firefox localhost variations
+            'http://localhost',
+            'http://127.0.0.1',
+            
             // Production origins from environment variables
             process.env.FRONTEND_URL,
             process.env.CLIENT_URL,
@@ -106,16 +123,25 @@ const corsOptions = {
             console.log('🔍 CORS Check - Origin:', origin, '| Allowed:', allowedOrigins);
         }
 
-        // Allow requests with no origin (mobile apps, Postman, curl)
+        // Allow requests with no origin (mobile apps, Postman, curl, Burp Suite)
         if (!origin) {
             return callback(null, true);
+        }
+
+        // In development, be more permissive for security testing
+        if (process.env.NODE_ENV !== 'production') {
+            // Allow any localhost/127.0.0.1 origin in development
+            if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('burp')) {
+                return callback(null, true);
+            }
         }
 
         // Check if origin is in whitelist
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            // ✅ SECURE: Reject unauthorized origins
+            // ✅ SECURE: Reject unauthorized origins (but log for debugging)
+            console.log('🚫 CORS BLOCKED:', origin);
             const error = new Error(`CORS policy: Origin ${origin} is not allowed`);
             error.status = 403;
             callback(error);
@@ -127,7 +153,16 @@ const corsOptions = {
         'Content-Type', 
         'Authorization', 
         'X-Requested-With',
-        'X-CSRF-Token' // For CSRF protection
+        'X-CSRF-Token', // For CSRF protection
+        'Accept',
+        'Origin',
+        'User-Agent',
+        'DNT',
+        'Cache-Control',
+        'X-Mx-ReqToken',
+        'Keep-Alive',
+        'X-Requested-With',
+        'If-Modified-Since'
     ],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     maxAge: 86400, // 24 hours - cache preflight requests

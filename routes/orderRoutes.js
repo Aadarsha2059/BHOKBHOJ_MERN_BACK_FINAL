@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const orderController = require("../controllers/orderController");
 const { authenticateUser } = require("../middlewares/authorizedUser");
+const { isAdmin } = require("../middlewares/roleMiddleware");
 
 // All order routes require authentication
 router.use(authenticateUser);
@@ -15,16 +16,16 @@ router.post("/", orderController.createOrder);
 // Get user's orders
 router.get("/", orderController.getUserOrders);
 
-// Get single order
+// Get single order (✅ Already protected - checks userId)
 router.get("/:id", orderController.getOrderById);
 
-// Cancel order
+// Cancel order (✅ Already protected - checks userId)
 router.put("/:id/cancel", orderController.cancelOrder);
 
-// Update payment status (admin only - you can add admin middleware here)
-router.put("/:id/payment", orderController.updatePaymentStatus);
+// Update payment status (✅ IDOR FIX: Admin only)
+router.put("/:id/payment", isAdmin, orderController.updatePaymentStatus);
 
-// Mark order as received
+// Mark order as received (✅ Already protected - checks userId)
 router.put("/:id/received", orderController.markOrderReceived);
 
 module.exports = router; 

@@ -6,19 +6,19 @@
     "auditLog": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\.5e32c26694a4e659a9f95a25a7e39818b77063b4-audit.json",
     "files": [
         {
-            "date": 1763217868909,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2025-11-15.log",
-            "hash": "82f1cf13e84af696cd7f2291934eb9af58fb8ecc8f2c6a277b1f9fa7dba98b41"
+            "date": 1766833371684,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2025-12-27.log",
+            "hash": "16c6ac1cf5a6c6b182e776f08c18f82023780c7ee64481533395e5176be2dd34"
         },
         {
-            "date": 1763286838700,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2025-11-16.log",
-            "hash": "57f3297c8dfa9855b8a9911af9550dd0f0dfad0ab1e2dc9c43385a69798d41ad"
+            "date": 1766995770998,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2025-12-29.log",
+            "hash": "a074dc1996c87f7a5d259513d028c59341db4c9eb054c75a136bd8bb8a3d7687"
         },
         {
-            "date": 1763542777494,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2025-11-19.log",
-            "hash": "2e3de4da6fe783662cf9a6e101568c1571c0b86f102d43f3fa779fefe2b76c56"
+            "date": 1767253454007,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\exceptions-2026-01-01.log",
+            "hash": "c8a20972ea2c6a9d2dcdd5a4ab092851b9131c8e7942dca229ff14c3f835f392"
         }
     ],
     "hashType": "sha256"

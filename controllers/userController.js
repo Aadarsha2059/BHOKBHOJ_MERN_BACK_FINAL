@@ -667,15 +667,17 @@ exports.verifyOTP = async (req, res) => {
 };
 
 // Update User (now with currentPassword check for sensitive changes)
+// ✅ IDOR FIX: Use authenticated user's ID from JWT token, not from URL params
 exports.updateUser = async (req, res) => {
-  const { id } = req.params;
+  // ✅ SECURITY: Get user ID from JWT token (req.user), not from URL parameter
+  const userId = req.user._id;
   const { username, email, password, phone, address, fullname, currentPassword } = req.body;
 
   try {
     const updateData = { fullname, username, phone, address };
 
-    // Find the user
-    const user = await User.findById(id);
+    // Find the authenticated user
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
@@ -691,7 +693,7 @@ exports.updateUser = async (req, res) => {
         return res.status(403).json({ success: false, message: "Current password is incorrect." });
       }
       // Check if email already exists for another user
-      const existingUserByEmail = await User.findOne({ email, _id: { $ne: id } });
+      const existingUserByEmail = await User.findOne({ email, _id: { $ne: userId } });
       if (existingUserByEmail) {
         return res.status(400).json({ success: false, message: "Email already exists" });
       }
@@ -710,7 +712,11 @@ exports.updateUser = async (req, res) => {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
+    // ✅ SECURITY: Update only the authenticated user's profile
+    const updatedUser = await User.findByIdAndUpdate(userId, updateData, { 
+      new: true,
+      select: '-password'  // Don't return password in response
+    });
 
     if (!updatedUser) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -718,6 +724,7 @@ exports.updateUser = async (req, res) => {
 
     return res.json({ success: true, message: "User updated", user: updatedUser });
   } catch (error) {
+    console.error('Update user error:', error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };

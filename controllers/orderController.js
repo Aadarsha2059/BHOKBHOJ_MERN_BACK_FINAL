@@ -451,10 +451,21 @@ exports.cancelOrder = async (req, res) => {
 };
 
 // Update payment status
+// ✅ IDOR FIX: Only admins can update payment status
 exports.updatePaymentStatus = async (req, res) => {
     try {
         const orderId = req.params.id;
         const { paymentStatus } = req.body;
+        const userId = req.user._id;
+
+        // ✅ SECURITY: Check if user is admin
+        const user = await User.findById(userId);
+        if (!user || !user.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. Admin privileges required."
+            });
+        }
 
         if (!paymentStatus || !["pending", "paid", "failed"].includes(paymentStatus)) {
             return res.status(400).json({

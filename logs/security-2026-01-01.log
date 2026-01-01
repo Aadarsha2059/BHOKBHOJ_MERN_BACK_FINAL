@@ -1,0 +1,4 @@
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/verify-otp","responseTime":24,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 13:46:55","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/verify-otp","responseTime":46,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-01 13:58:50","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/cart/add","responseTime":13,"service":"bhokbhoj-api","statusCode":401,"timestamp":"2026-01-01 14:00:10","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/login","responseTime":228,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2026-01-01 14:13:09","userId":null}

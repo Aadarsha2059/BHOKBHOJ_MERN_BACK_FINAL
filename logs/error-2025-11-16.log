@@ -1,4 +1,0 @@
-{"ip":"127.0.0.1","level":"error","message":"GET /favicon.ico","responseTime":21,"service":"bhokbhoj-api","statusCode":404,"timestamp":"2025-11-16 15:39:18","userId":null}
-{"ip":"127.0.0.1","level":"error","message":"GET /api/cart","responseTime":6,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2025-11-16 15:39:24","userId":null}
-{"ip":"127.0.0.1","level":"error","message":"GET /api/auth/me","responseTime":2,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2025-11-16 15:40:10","userId":null}
-{"ip":"127.0.0.1","level":"error","message":"GET /api/cart","responseTime":2,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2025-11-16 15:40:36","userId":null}
