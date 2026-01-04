@@ -54,13 +54,20 @@ exports.getFeedbacks = async (req, res) => {
             };
         }
 
-        const feedbacks = await Feedback.find(filter)
-            .populate("userId", "username email")
-            .populate("productId", "name price")
-            .skip(skip)
-            .limit(Number(limit));
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        const [feedbacks, total] = await Promise.all([
+            Feedback.find(filter)
+                .populate("userId", "username email")
+                .populate("productId", "name price")
+                .select('userId productId comment rating createdAt updatedAt')
+                .skip(skip)
+                .limit(Number(limit))
+                .sort({ createdAt: -1 })
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            Feedback.countDocuments(filter)
+        ]);
 
-        // Apply search filter after population
+        // Apply search filter after population (only if needed)
         let filteredFeedbacks = feedbacks;
         if (search && searchFilter.$or) {
             filteredFeedbacks = feedbacks.filter(feedback => {
@@ -77,8 +84,6 @@ exports.getFeedbacks = async (req, res) => {
                 });
             });
         }
-
-        const total = await Feedback.countDocuments(filter);
 
         return res.status(200).json({
             success: true,

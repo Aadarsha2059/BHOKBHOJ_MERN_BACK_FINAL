@@ -10,15 +10,25 @@ const mongoose = require("mongoose");
 // Create order from cart
 exports.createOrder = async (req, res) => {
     try {
-        console.log("=== Order Creation Started ===");
+        // 🔍 BURP SUITE TESTING: Log checkout/order creation request details
+        console.log('\n🔍 CHECKOUT/ORDER CREATION REQUEST INTERCEPTED:');
+        console.log('═══════════════════════════════════════');
+        console.log('👤 User ID:', req.user ? req.user._id : 'Not authenticated');
+        console.log('👤 Username:', req.user ? req.user.username : 'Not authenticated');
+        console.log('💳 Payment Method:', req.body.paymentMethod || 'cash');
+        console.log('📝 Delivery Instructions:', req.body.deliveryInstructions || 'None');
+        console.log('🎫 Authorization Token:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
+        console.log('🌐 Origin:', req.headers.origin);
+        console.log('🔗 Referer:', req.headers.referer);
+        console.log('🕐 Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════\n');
+        
         const userId = req.user._id;
-        console.log("User ID:", userId);
         
         const {
             deliveryInstructions = "",
             paymentMethod = "cash"
         } = req.body;
-        console.log("Request body:", req.body);
 
         // Get user's profile to use their address
         const user = await User.findById(userId);
@@ -92,30 +102,99 @@ exports.createOrder = async (req, res) => {
             }
         }
 
-        // Create order items with safe data extraction
-        console.log("Creating order items...");
-        const orderItems = cart.items.map(item => {
+        // ✅ SECURITY: Create order items with price validation and recalculation
+        console.log("Creating order items with security validation...");
+        const orderItems = [];
+        
+        for (const item of cart.items) {
             // Safety check for item structure
             if (!item || !item.productId) {
                 console.error("Invalid cart item:", item);
-                throw new Error("Invalid cart item structure");
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid cart item structure"
+                });
             }
+
+            // ✅ SECURITY: Re-fetch product from database to get current price
+            const product = await Product.findById(item.productId._id || item.productId);
+            if (!product) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Product ${item.productId.name || 'Unknown'} no longer exists`
+                });
+            }
+
+            // ✅ SECURITY: Validate quantity
+            const quantity = item.quantity || 1;
+            if (quantity < 1 || !Number.isInteger(quantity) || isNaN(quantity)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid quantity detected",
+                    security: {
+                        attackType: "Invalid Quantity Manipulation",
+                        severity: "HIGH",
+                        description: "Attempted to place order with invalid quantity. Quantity must be a positive integer.",
+                        action: "BLOCKED"
+                    }
+                });
+            }
+
+            // ✅ SECURITY: Always use price from product database, never from cart
+            const productPrice = product.price;
             
-            return {
-                productId: item.productId._id || item.productId,
-                quantity: item.quantity || 1,
-                price: item.price || item.productId.price || 0,
-                productName: item.productId.name || 'Unknown Product',
+            // ✅ SECURITY: Validate price (must be positive, not zero, not negative)
+            if (!productPrice || productPrice <= 0 || isNaN(productPrice)) {
+                console.log('🚨 SECURITY ALERT: Invalid product price detected!');
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid product price detected. Please contact support.",
+                    security: {
+                        attackType: "Price Validation Failure",
+                        severity: "CRITICAL",
+                        description: "Product price validation failed. This may indicate a price manipulation attempt or data corruption.",
+                        action: "BLOCKED"
+                    }
+                });
+            }
+
+            // ✅ SECURITY: Validate price is a valid number (not decimal manipulation for currency)
+            if (!Number.isFinite(productPrice) || productPrice % 1 !== 0) {
+                // Allow decimal prices (e.g., 99.99) but validate they're reasonable
+                if (productPrice < 0.01 || productPrice > 100000) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Product price out of valid range",
+                        security: {
+                            attackType: "Price Range Validation",
+                            severity: "HIGH",
+                            description: "Product price is outside valid range (0.01 to 100000).",
+                            action: "BLOCKED"
+                        }
+                    });
+                }
+            }
+
+            orderItems.push({
+                productId: product._id,
+                quantity: quantity,
+                price: productPrice, // Always from database
+                productName: product.name || 'Unknown Product',
                 categoryName: item.productId.categoryId?.name || 'Unknown Category',
                 restaurantName: item.productId.restaurantId?.name || 'Unknown Restaurant',
                 restaurantLocation: item.productId.restaurantId?.location || 'Location not available',
-                foodType: item.productId.type || 'Unknown Type'
-            };
-        });
+                foodType: product.type || 'Unknown Type'
+            });
+        }
 
-        // Calculate subtotal
+        // ✅ SECURITY: Calculate subtotal using validated prices from database
         const subtotal = orderItems.reduce((total, item) => {
-            return total + (item.price * item.quantity);
+            const itemTotal = item.price * item.quantity;
+            // Additional validation
+            if (!Number.isFinite(itemTotal) || itemTotal < 0) {
+                throw new Error("Invalid item total calculated");
+            }
+            return total + itemTotal;
         }, 0);
         // Calculate delivery fee and tax
         const deliveryFee = subtotal > 500 ? 0 : 49;
@@ -169,15 +248,17 @@ exports.createOrder = async (req, res) => {
             select: 'name price filepath'
         });
 
-        // Send order confirmation email
-        try {
-            const transporter = nodemailer.createTransport({
-                service: "gmail",
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
-            });
+        // ✅ PERFORMANCE FIX: Send order confirmation email asynchronously (non-blocking)
+        // Email is sent in background - response returns immediately
+        setImmediate(() => {
+            try {
+                const transporter = nodemailer.createTransport({
+                    service: "gmail",
+                    auth: {
+                        user: process.env.EMAIL_USER,
+                        pass: process.env.EMAIL_PASS
+                    }
+                });
             // Format currency helper
             const formatNPR = (amount) => `NPR ${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             // Build base URL for images
@@ -254,16 +335,35 @@ exports.createOrder = async (req, res) => {
                 subject: "Order Confirmation - BHOKBHOJ",
                 html: orderConfirmationHtml
             };
-            transporter.sendMail(mailOptions, (err, info) => {
-                if (err) {
-                    console.error('Order email error:', err);
-                } else {
-                    console.log('Order confirmation email sent:', info.response);
-                }
-            });
-        } catch (emailErr) {
-            console.error('Order confirmation email failed:', emailErr);
-        }
+                transporter.sendMail(mailOptions, (err, info) => {
+                    if (err) {
+                        console.error('Order email error:', err);
+                    } else {
+                        console.log('Order confirmation email sent:', info.response);
+                    }
+                });
+            } catch (emailErr) {
+                console.error('Order confirmation email failed:', emailErr);
+            }
+        });
+
+        // 🔍 BURP SUITE TESTING: Log checkout/order creation response
+        console.log('\n✅ CHECKOUT/ORDER CREATION RESPONSE SENT:');
+        console.log('═══════════════════════════════════════');
+        console.log('🆔 Order ID:', order._id);
+        console.log('👤 User ID:', userId);
+        console.log('👤 Username:', user.username);
+        console.log('📧 User Email:', user.email);
+        console.log('💳 Payment Method:', paymentMethod);
+        console.log('📦 Total Items:', orderItems.length);
+        console.log('💰 Subtotal:', subtotal);
+        console.log('🚚 Delivery Fee:', deliveryFee);
+        console.log('📊 Tax:', tax);
+        console.log('💵 Total Amount:', totalAmount);
+        console.log('🏠 Delivery Address:', JSON.stringify(deliveryAddress, null, 2));
+        console.log('📝 Delivery Instructions:', deliveryInstructions || 'None');
+        console.log('🕐 Order Time:', new Date().toISOString());
+        console.log('═══════════════════════════════════════\n');
 
         console.log("=== Order Creation Completed Successfully ===");
         return res.status(201).json({
@@ -301,25 +401,32 @@ exports.getUserOrders = async (req, res) => {
         }
         console.log("Filter:", filter);
 
-        const orders = await Order.find(filter)
-            .populate({
-                path: 'items.productId',
-                select: 'name price filepath description type',
-                populate: [
-                    { path: 'categoryId', select: 'name' },
-                    { path: 'restaurantId', select: 'name location' }
-                ]
-            })
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .skip(skip);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        const [orders, total] = await Promise.all([
+            Order.find(filter)
+                .populate({
+                    path: 'items.productId',
+                    select: 'name price filepath description type',
+                    populate: [
+                        { path: 'categoryId', select: 'name' },
+                        { path: 'restaurantId', select: 'name location' }
+                    ]
+                })
+                .select('userId items subtotal deliveryFee tax totalAmount deliveryAddress deliveryInstructions paymentMethod orderStatus estimatedDeliveryTime orderDate createdAt')
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .skip(skip)
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            Order.countDocuments(filter)
+        ]);
 
         console.log("Orders found:", orders.length);
 
-        // Transform orders with full image URLs
+        // Transform orders with full image URLs (orders are already plain objects from lean())
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedOrders = orders.map(order => {
-            const transformedOrder = order.toObject();
+            // Order is already a plain object (from lean()), no need for toObject()
+            const transformedOrder = { ...order };
             
             // Transform product images in order items
             if (transformedOrder.items && Array.isArray(transformedOrder.items)) {
@@ -340,8 +447,6 @@ exports.getUserOrders = async (req, res) => {
         });
 
         console.log("Transformed orders:", JSON.stringify(transformedOrders, null, 2));
-
-        const total = await Order.countDocuments(filter);
         console.log("Total orders:", total);
 
         console.log("=== Get User Orders Completed ===");
@@ -510,10 +615,15 @@ exports.markOrderReceived = async (req, res) => {
         if (!order) {
             return res.status(404).json({ success: false, message: "Order not found" });
         }
-        if (order.orderStatus !== "pending") {
-            return res.status(400).json({ success: false, message: "Order must be pending to be marked as received" });
+        // ✅ FIXED: Order must be accepted by admin before user can mark as received
+        if (order.orderStatus !== "accepted") {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Order must be accepted by admin to be marked as received. Current status: ${order.orderStatus}` 
+            });
         }
         order.orderStatus = "received";
+        order.actualDeliveryTime = new Date();
         await order.save();
         // Re-fetch with population and transform
         order = await Order.findOne({ _id: orderId, userId })
@@ -541,16 +651,39 @@ exports.markOrderReceived = async (req, res) => {
                 return transformedItem;
             });
         }
-        // Send bill confirmation email
+        // ✅ Send bill confirmation email via Ethereal (for testing)
         try {
             const user = await User.findById(userId);
-            const transporter = nodemailer.createTransport({
-                service: "gmail",
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
-            });
+            let transporter;
+            let etherealAccount;
+            let emailPreviewUrl = null;
+            
+            // Try to create Ethereal test account
+            try {
+                etherealAccount = await nodemailer.createTestAccount();
+                transporter = nodemailer.createTransport({
+                    host: 'smtp.ethereal.email',
+                    port: 587,
+                    secure: false,
+                    auth: {
+                        user: etherealAccount.user,
+                        pass: etherealAccount.pass
+                    }
+                });
+                console.log('✅ Ethereal account created for bill email');
+                console.log('📧 Ethereal User:', etherealAccount.user);
+                console.log('🔐 Ethereal Pass:', etherealAccount.pass);
+            } catch (etherealError) {
+                console.error('❌ Failed to create Ethereal account, using Gmail:', etherealError);
+                // Fallback to Gmail if Ethereal fails
+                transporter = nodemailer.createTransport({
+                    service: "gmail",
+                    auth: {
+                        user: process.env.EMAIL_USER,
+                        pass: process.env.EMAIL_PASS
+                    }
+                });
+            }
             // Format currency helper
             const formatNPR = (amount) => `NPR ${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             // Build base URL for images
@@ -639,22 +772,41 @@ exports.markOrderReceived = async (req, res) => {
                 </div>
             `;
             const mailOptions = {
-                from: `"BHOKBHOJ" <${process.env.EMAIL_USER}>`,
+                from: `"BHOKBHOJ" <${etherealAccount ? etherealAccount.user : (process.env.EMAIL_USER || 'noreply@bhokbhoj.com')}>`,
                 to: user.email,
                 subject: "Bill Confirmation - BHOKBHOJ",
                 html: billHtml
             };
+            
+            // ✅ FIXED: Send email asynchronously (non-blocking) for faster response
             transporter.sendMail(mailOptions, (err, info) => {
                 if (err) {
                     console.error('Bill email error:', err);
                 } else {
-                    console.log('Bill confirmation email sent:', info.response);
+                    console.log('✅ Bill confirmation email sent:', info.response);
+                    if (etherealAccount && info) {
+                        const previewUrl = nodemailer.getTestMessageUrl(info);
+                        console.log('📧 Bill Email Preview URL:', previewUrl);
+                        console.log('💡 Open this URL in browser to see the bill email');
+                    }
                 }
+            });
+            
+            // ✅ Return immediately without waiting for email (non-blocking)
+            return res.status(200).json({ 
+                success: true, 
+                message: "Order marked as received. Bill will be sent to your email shortly!",
+                data: transformedOrder
             });
         } catch (emailErr) {
             console.error('Bill confirmation email failed:', emailErr);
+            // Still return success even if email fails
+            return res.status(200).json({ 
+                success: true, 
+                message: "Order marked as received (email sending failed)",
+                data: transformedOrder 
+            });
         }
-        return res.status(200).json({ success: true, message: "Order marked as received", data: transformedOrder });
     } catch (err) {
         console.error("Mark Order Received Error:", err);
         return res.status(500).json({ success: false, message: "Server error", error: err.message });

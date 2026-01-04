@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Login Test - Burp Suite</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .box { background: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background: #14b8a6; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #0d9488; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 5px; }
+        .success { background: #d1fae5; }
+        .error { background: #fee2e2; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Simple Login Test for Burp Suite</h1>
+    
+    <div class="box">
+        <h3>📋 Instructions:</h3>
+        <ol>
+            <li><strong>Open Burp Suite → Proxy → HTTP history</strong> (NOT Intercept tab)</li>
+            <li><strong>Turn OFF interception:</strong> Proxy → Intercept → "Intercept is off"</li>
+            <li>Fill the form below and click "Send Login Request"</li>
+            <li>In Burp Suite HTTP history, you should see:
+                <ul>
+                    <li><strong>OPTIONS</strong> /api/auth/login (preflight - first)</li>
+                    <li><strong>POST</strong> /api/auth/login (with credentials - second)</li>
+                </ul>
+            </li>
+            <li>Click the <strong>POST</strong> request → <strong>Request</strong> tab → Scroll down → See JSON body with username and password</li>
+        </ol>
+    </div>
+
+    <div class="box">
+        <h3>Test Login:</h3>
+        <input type="text" id="username" placeholder="Username" value="testuser">
+        <input type="password" id="password" placeholder="Password" value="test123">
+        <button onclick="sendLogin()">🔍 Send Login Request (Check Burp Suite)</button>
+        <div id="result" class="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        async function sendLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            console.log('🔐 Sending login request to Burp Suite...');
+            console.log('👤 Username:', username);
+            console.log('🔑 Password:', password);
+            console.log('💡 Check Burp Suite → Proxy → HTTP history for POST /api/auth/login');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '⏳ Sending request... Check Burp Suite HTTP history now!';
+            
+            try {
+                const response = await fetch('http://localhost:5050/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `
+                    <h3>✅ Request Sent!</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Message:</strong> ${data.message || 'Request completed'}</p>
+                    <p><strong>📋 Now check Burp Suite:</strong></p>
+                    <ol>
+                        <li>Go to <strong>Proxy → HTTP history</strong></li>
+                        <li>Look for <strong>POST /api/auth/login</strong></li>
+                        <li>Click it → <strong>Request</strong> tab → See credentials in JSON body</li>
+                    </ol>
+                `;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Error: ${error.message}</h3>
+                    <p>Check browser console and Burp Suite HTTP history.</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
+

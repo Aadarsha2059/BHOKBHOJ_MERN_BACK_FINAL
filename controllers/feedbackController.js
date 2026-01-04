@@ -95,8 +95,9 @@ exports.getAllFeedbacks = async (req, res) => {
           { path: 'restaurantId', select: 'name' }
         ]
       })
-      .populate('userId', 'name email')
-      .sort({ createdAt: -1 });
+      .populate('userId', 'username fullname email')
+      .sort({ createdAt: -1 })
+      .limit(20); // Limit to 20 most recent feedbacks
 
     // Transform feedbacks with full image URLs
     const baseUrl = `${req.protocol}://${req.get('host')}`;

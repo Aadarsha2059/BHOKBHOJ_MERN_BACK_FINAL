@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Burp Suite Login Test - BHOKBHOJ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #14b8a6;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input:focus {
+            outline: none;
+            border-color: #14b8a6;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #14b8a6;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0d9488;
+        }
+        .info {
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #14b8a6;
+        }
+        .info h3 {
+            margin-top: 0;
+            color: #0d9488;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .result.success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            display: block;
+        }
+        .result.error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Burp Suite Login Test</h1>
+        
+        <div class="info">
+            <h3>📋 Instructions for Burp Suite:</h3>
+            <ol>
+                <li>Open <strong>Burp Suite → Proxy → HTTP history</strong> (NOT Intercept tab)</li>
+                <li>Make sure <strong>"Intercept is off"</strong> in Proxy → Intercept tab</li>
+                <li>Fill in the form below and click "Test Login"</li>
+                <li>In Burp Suite HTTP history, you should see:
+                    <ul>
+                        <li><strong>OPTIONS</strong> /api/auth/login (preflight)</li>
+                        <li><strong>POST</strong> /api/auth/login (with credentials)</li>
+                    </ul>
+                </li>
+                <li>Click the <strong>POST</strong> request to see username and password in the request body</li>
+            </ol>
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username or Email:</label>
+                <input type="text" id="username" name="username" placeholder="Enter username or email" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" placeholder="Enter password" required>
+            </div>
+            
+            <button type="submit">🔍 Test Login (Check Burp Suite)</button>
+        </form>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            console.log('🔐 Sending login request...');
+            console.log('👤 Username:', username);
+            console.log('🔑 Password:', password);
+            console.log('💡 Check Burp Suite → Proxy → HTTP history for POST /api/auth/login');
+            
+            try {
+                const response = await fetch('http://localhost:5050/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `
+                    <h3>✅ Request Sent Successfully!</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Message:</strong> ${data.message || 'Request completed'}</p>
+                    <p><strong>📋 Next Steps:</strong></p>
+                    <ol>
+                        <li>Go to Burp Suite → Proxy → HTTP history</li>
+                        <li>Look for <strong>POST /api/auth/login</strong></li>
+                        <li>Click it to see username and password in request body</li>
+                    </ol>
+                `;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p>Check browser console and Burp Suite HTTP history for details.</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
+

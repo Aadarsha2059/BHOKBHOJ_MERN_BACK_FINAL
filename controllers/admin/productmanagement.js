@@ -123,15 +123,19 @@ exports.getProducts = async (req, res) => {
             ];
         }
 
-        const products = await Product.find(filter)
-            .populate("categoryId", "name filepath")
-            .populate("restaurantId", "name location filepath")
-            .populate("sellerId", "firstName email")
-            .skip(skip)
-            .limit(Number(limit))
-            .sort({ createdAt: -1 });
-
-        const total = await Product.countDocuments(filter);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        const [products, total] = await Promise.all([
+            Product.find(filter)
+                .populate("categoryId", "name filepath")
+                .populate("restaurantId", "name location filepath")
+                .populate("sellerId", "firstName email")
+                .select('name price categoryId restaurantId type filepath description createdAt updatedAt')
+                .skip(skip)
+                .limit(Number(limit))
+                .sort({ createdAt: -1 })
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            Product.countDocuments(filter)
+        ]);
 
         // Transform products with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -159,9 +163,12 @@ exports.getProducts = async (req, res) => {
 
 exports.getOneProduct = async (req, res) => {
     try {
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
         const product = await Product.findById(req.params.id)
             .populate("categoryId", "name filepath")
-            .populate("restaurantId", "name location filepath");
+            .populate("restaurantId", "name location filepath")
+            .lean(); // ✅ Use lean() for faster read-only queries
+        
         if (!product) {
             return res.status(404).json({ success: false, message: "Product not found" });
         }

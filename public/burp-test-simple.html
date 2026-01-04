@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Burp Suite Test - BHOKBHOJ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #14b8a6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0d9488;
+        }
+        .response {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Burp Suite Test Page</h1>
+    <p>Use this page to test if Burp Suite is intercepting POST requests correctly.</p>
+    
+    <div class="test-section">
+        <h3>1. Test Registration (POST with credentials)</h3>
+        <input type="text" id="regUsername" placeholder="Username" value="testuser">
+        <input type="email" id="regEmail" placeholder="Email" value="test@test.com">
+        <input type="password" id="regPassword" placeholder="Password" value="test123">
+        <button onclick="testRegister()">Test Registration (POST)</button>
+        <div id="regResponse" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Test Login (POST with credentials)</h3>
+        <input type="text" id="loginUsername" placeholder="Username" value="testuser">
+        <input type="password" id="loginPassword" placeholder="Password" value="test123">
+        <button onclick="testLogin()">Test Login (POST)</button>
+        <div id="loginResponse" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Test Simple Endpoint (POST)</h3>
+        <button onclick="testSimple()">Test Simple POST</button>
+        <div id="simpleResponse" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📋 Instructions</h3>
+        <ol>
+            <li>Configure browser proxy to <strong>127.0.0.1:8080</strong></li>
+            <li>Open Burp Suite → <strong>Proxy → HTTP history</strong></li>
+            <li>Click any test button above</li>
+            <li>Check Burp Suite HTTP history for <strong>POST</strong> requests</li>
+            <li>Click on POST request → <strong>Request</strong> tab → See credentials</li>
+        </ol>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5050/api';
+
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = 'response ' + (isError ? 'error' : 'success');
+        }
+
+        async function testRegister() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('regUsername').value,
+                        email: document.getElementById('regEmail').value,
+                        password: document.getElementById('regPassword').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('regResponse', {
+                    status: response.status,
+                    data: data,
+                    message: 'Check Burp Suite HTTP history for POST /api/auth/register'
+                });
+            } catch (error) {
+                showResponse('regResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('loginUsername').value,
+                        password: document.getElementById('loginPassword').value
+                    })
+                });
+                const data = await response.json();
+                showResponse('loginResponse', {
+                    status: response.status,
+                    data: data,
+                    message: 'Check Burp Suite HTTP history for POST /api/auth/login'
+                });
+            } catch (error) {
+                showResponse('loginResponse', { error: error.message }, true);
+            }
+        }
+
+        async function testSimple() {
+            try {
+                const response = await fetch(`${API_BASE}/test/burp-simple`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': 'http://localhost:5173'
+                    },
+                    body: JSON.stringify({
+                        test: 'data',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                const data = await response.json();
+                showResponse('simpleResponse', {
+                    status: response.status,
+                    data: data,
+                    message: 'Check Burp Suite HTTP history for POST /api/test/burp-simple'
+                });
+            } catch (error) {
+                showResponse('simpleResponse', { error: error.message }, true);
+            }
+        }
+
+        console.log('🔍 Burp Suite test page loaded');
+        console.log('📝 Make sure:');
+        console.log('   1. Browser proxy is set to 127.0.0.1:8080');
+        console.log('   2. Burp Suite proxy is running');
+        console.log('   3. Check Proxy → HTTP history (not just Intercept)');
+    </script>
+</body>
+</html>
+

@@ -10,26 +10,33 @@ const passport = require('passport');
 const jwt = require('jsonwebtoken');
 // Import security middleware
 const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS, csrfProtection, validateJWT } = require("../middlewares/securityMiddleware");
+// ✅ WHITE BOX TESTING: Import new security validation and rate limiting
+const securityValidation = require("../middlewares/securityValidation");
+const rateLimiter = require("../middlewares/rateLimiter");
 
 // ==========================================
 // SECURITY MIDDLEWARE APPLICATION
 // ==========================================
 
 // Register new user with validation and security
-router.post("/register", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateUser, registerUser);
+// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
+router.post("/register", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateUser, registerUser);
 
 // Login user with security (Step 1: Send OTP)
-router.post("/login", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, loginUser);
+// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
+router.post("/login", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, loginUser);
 
 // Verify OTP and complete login (Step 2)
-router.post("/verify-otp", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, verifyOTP);
+// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
+router.post("/verify-otp", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, verifyOTP);
 
 // Get current user (protected route)
 router.get("/me", authenticateUser, getCurrentUser);
 
 // Update user info with validation and security
 // ✅ IDOR FIX: Removed :id parameter - uses JWT token to identify user
-router.put("/update", authenticateUser, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUser);
+// ✅ SECURITY: securityValidation detects malicious payloads in profile fields
+router.put("/update", authenticateUser, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUser);
 
 // Forgot password - send reset link with security
 router.post("/forgot-password", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, sendResetLink);

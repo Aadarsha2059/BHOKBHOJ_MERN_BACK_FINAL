@@ -3,6 +3,8 @@ const router = express.Router();
 const cartController = require("../controllers/cartController");
 const { authenticateUser } = require("../middlewares/authorizedUser");
 const { optionalAuthGuard } = require("../middlewares/authGuard");
+const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS } = require("../middlewares/securityMiddleware");
+const securityValidation = require("../middlewares/securityValidation");
 
 // ✅ Use optional auth - allows guest users
 // router.use(authenticateUser);
@@ -14,10 +16,12 @@ router.get("/test", optionalAuthGuard, cartController.testAuth);
 router.get("/", optionalAuthGuard, cartController.getCart);
 
 // Add item to cart (optional auth for guest users)
-router.post("/add", optionalAuthGuard, cartController.addToCart);
+// ✅ SECURITY: securityValidation detects malicious payloads (XSS, SQL injection, etc.)
+router.post("/add", optionalAuthGuard, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, cartController.addToCart);
 
 // Update cart item quantity (optional auth)
-router.put("/update", optionalAuthGuard, cartController.updateCartItem);
+// ✅ SECURITY: securityValidation detects malicious payloads and price manipulation
+router.put("/update", optionalAuthGuard, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, cartController.updateCartItem);
 
 // Remove item from cart (optional auth)
 router.delete("/remove/:productId", optionalAuthGuard, cartController.removeFromCart);

@@ -75,22 +75,24 @@ exports.getPaymentMethods = async (req, res) => {
             }
         }
 
-        const payments = await PaymentMethod.find(filter)
-            .sort({ createdAt: -1 }) // Sort by newest first
-            .skip(skip)
-            .limit(Number(limit));
-
-        const total = await PaymentMethod.countDocuments(filter);
-
-        // Calculate summary statistics
-        const totalRevenue = await PaymentMethod.aggregate([
-            { $match: filter },
-            { $group: { _id: null, total: { $sum: "$totalprice" } } }
-        ]);
-
-        const paymentModeStats = await PaymentMethod.aggregate([
-            { $match: filter },
-            { $group: { _id: "$paymentmode", count: { $sum: 1 }, total: { $sum: "$totalprice" } } }
+        // ✅ PERFORMANCE OPTIMIZED: Run all queries in parallel
+        const [payments, total, totalRevenue, paymentModeStats] = await Promise.all([
+            PaymentMethod.find(filter)
+                .select('userId orderId paymentmode totalprice createdAt updatedAt')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(Number(limit))
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            PaymentMethod.countDocuments(filter),
+            // Calculate summary statistics in parallel
+            PaymentMethod.aggregate([
+                { $match: filter },
+                { $group: { _id: null, total: { $sum: "$totalprice" } } }
+            ]),
+            PaymentMethod.aggregate([
+                { $match: filter },
+                { $group: { _id: "$paymentmode", count: { $sum: 1 }, total: { $sum: "$totalprice" } } }
+            ])
         ]);
 
         return res.status(200).json({

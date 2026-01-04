@@ -64,6 +64,15 @@ const UserSchema = new mongoose.Schema(
       type: String,
       enum: ['user', 'admin'],
       default: 'user'
+    },
+    // ✅ SECURED: Login attempt tracking for brute force protection
+    loginAttempts: {
+      type: Number,
+      default: 0
+    },
+    accountLockedUntil: {
+      type: Date,
+      default: null
     }
   },
   {

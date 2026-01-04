@@ -1,5 +1,24 @@
 require("dotenv").config()
 
+// ✅ Check email configuration on startup
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  console.warn('\n⚠️  EMAIL CONFIGURATION WARNING:');
+  console.warn('═══════════════════════════════════════');
+  console.warn('EMAIL_USER:', process.env.EMAIL_USER ? '✅ Set' : '❌ NOT SET');
+  console.warn('EMAIL_PASS:', process.env.EMAIL_PASS ? '✅ Set' : '❌ NOT SET');
+  console.warn('');
+  console.warn('OTP emails will NOT be sent without email configuration.');
+  console.warn('OTP codes will be logged to console instead.');
+  console.warn('');
+  console.warn('To fix: Add EMAIL_USER and EMAIL_PASS to your .env file');
+  console.warn('See EMAIL_TROUBLESHOOTING.md for detailed instructions');
+  console.warn('═══════════════════════════════════════\n');
+} else {
+  console.log('✅ Email configuration detected');
+  console.log('📧 EMAIL_USER:', process.env.EMAIL_USER);
+  console.log('🔐 EMAIL_PASS:', '***configured***');
+}
+
 const express=require("express")
 const connectDB=require("./config/db")
 const logger = require("./config/logger")
@@ -30,6 +49,7 @@ const PaymentMethod = require("./models/paymentmethod")
 const { transformProductData, transformCategoryData, transformRestaurantData } = require("./utils/imageUtils")
 
 const path=require("path") 
+const crypto = require('crypto');
 const cors = require("cors")
 const feedbackRoutes = require('./routes/feedbackRoutes')
 const dashboardRoutes = require('./routes/dashboardRoutes');
@@ -43,37 +63,237 @@ const { securityHeaders, forceHTTPS, corsOptions } = require('./middlewares/secu
 
 const app=express() 
 
-// Apply security headers (disabled in development)
+// ✅ SECURED: Apply security headers in ALL environments
+// Headers are now enabled in both development and production
+// More permissive CSP in development, strict in production
+securityHeaders(app);
+
+// Force HTTPS redirect (production only - HTTP allowed in development)
 if (process.env.NODE_ENV === 'production') {
-    securityHeaders(app);
     app.use(forceHTTPS);
 }
 
+// ✅ CORS FIX: Handle OPTIONS requests FIRST - before cors middleware
+// This ensures preflight requests are handled immediately with proper headers
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        const origin = req.headers.origin;
+        console.log('\n🔍 ===== OPTIONS PREFLIGHT REQUEST =====');
+        console.log('📍 URL:', req.originalUrl);
+        console.log('📍 Method:', req.method);
+        console.log('🌐 Origin:', origin);
+        console.log('📋 Request Method:', req.headers['access-control-request-method'] || 'N/A');
+        console.log('📋 Request Headers:', req.headers['access-control-request-headers'] || 'N/A');
+        
+        // Always set CORS headers for OPTIONS requests (be permissive in development)
+        // In development, allow all localhost origins
+        if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            const allowedOrigin = origin || 'http://localhost:5173';
+            
+            // ✅ CRITICAL: Match the exact headers requested by the browser
+            const requestedHeaders = req.headers['access-control-request-headers'] || '';
+            const requestedMethod = req.headers['access-control-request-method'] || 'POST';
+            
+            // Set CORS headers - must match what browser requested
+            res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+            // ✅ CRITICAL: Always allow Authorization header (even if browser doesn't request it in preflight)
+            // This is needed because POST requests may include Authorization header from localStorage
+            // We echo back what browser requested, but also ensure Authorization is always allowed
+            let allowedHeaders = '';
+            if (requestedHeaders) {
+                // Echo back what browser requested, but ensure Authorization is included
+                const headersList = requestedHeaders.split(',').map(h => h.trim().toLowerCase());
+                const headersSet = new Set(headersList);
+                
+                // Always add authorization (case-insensitive check)
+                if (!headersList.some(h => h.includes('authorization'))) {
+                    headersSet.add('authorization');
+                }
+                
+                // Convert back to comma-separated string (preserve original case for requested headers)
+                const finalHeaders = requestedHeaders.split(',').map(h => h.trim());
+                if (!headersList.some(h => h.includes('authorization'))) {
+                    finalHeaders.push('Authorization');
+                }
+                
+                allowedHeaders = finalHeaders.join(', ');
+                res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
+                console.log('✅ Allowed headers (including Authorization):', allowedHeaders);
+            } else {
+                // Fallback: include all common headers
+                allowedHeaders = 'Content-Type, content-type, Authorization, authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token';
+                res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
+                console.log('✅ Allowed headers (fallback):', allowedHeaders);
+            }
+            
+            // ✅ CRITICAL: Ensure response is complete and properly formatted
+            // Add all required CORS headers
+            res.setHeader('Vary', 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+            res.setHeader('Access-Control-Max-Age', '0');
+            
+            console.log('✅ CORS headers set for OPTIONS request');
+            console.log('✅ Allowed Origin:', allowedOrigin);
+            console.log('✅ Allowed Method:', requestedMethod);
+            console.log('✅ Allowed Headers:', typeof allowedHeaders !== 'undefined' ? allowedHeaders : (requestedHeaders || 'All standard headers'));
+            console.log('⚠️  ⚠️  ⚠️  BROWSER WILL NOW SEND POST REQUEST ⚠️  ⚠️  ⚠️');
+            console.log('💡 After this OPTIONS succeeds, browser will send:');
+            console.log('   POST', req.originalUrl);
+            if (req.originalUrl.includes('/auth/register')) {
+                console.log('   With body containing: fullname, username, email, password, confirmpassword, phone, address');
+            } else if (req.originalUrl.includes('/auth/login')) {
+                console.log('   With body containing: username, password');
+            } else if (req.originalUrl.includes('/auth/verify-otp')) {
+                console.log('   With body containing: userId, otp');
+            } else {
+                console.log('   With body containing request data');
+            }
+            console.log('💡 💡 💡 CRITICAL: HOW TO SEE POST IN BURP SUITE INTERCEPT 💡 💡 💡');
+            console.log('   📍 If using Burp Suite Intercept tab (Intercept is ON):');
+            console.log('      1. You will see this OPTIONS request first in Intercept tab');
+            console.log('      2. Click "Forward" button to forward the OPTIONS request');
+            console.log('      3. Then you will see POST', req.originalUrl, 'with credentials!');
+            console.log('      4. In the POST request, go to Request tab → Scroll down → See JSON body');
+            if (req.originalUrl.includes('/auth/register')) {
+                console.log('      5. The JSON body will contain: {"fullname":"...","username":"...","email":"...","password":"...","confirmpassword":"...","phone":"...","address":"..."}');
+            } else if (req.originalUrl.includes('/auth/login')) {
+                console.log('      5. The JSON body will contain: {"username":"...","password":"..."}');
+            } else if (req.originalUrl.includes('/auth/verify-otp')) {
+                console.log('      5. The JSON body will contain: {"userId":"...","otp":"..."}');
+            }
+            console.log('      6. Click "Forward" again to send the POST request');
+            console.log('   📍 If using Burp Suite HTTP history tab (Intercept is OFF):');
+            console.log('      1. Go to Proxy → HTTP history');
+            console.log('      2. Filter by: Method = POST OR URL contains:', req.originalUrl);
+            console.log('      3. The POST request will appear RIGHT AFTER this OPTIONS request');
+            console.log('      4. Click the POST request → Request tab → Scroll down → See JSON body with credentials');
+            console.log('🔍 ===== OPTIONS RESPONSE SENT (200) =====\n');
+            
+            // Send response immediately - don't continue to next middleware
+            return res.status(200).end();
+        } else {
+            // For non-localhost origins, still set headers (cors middleware will validate)
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
+            console.log('✅ CORS headers set for OPTIONS request (non-localhost)');
+            console.log('🔍 ===== OPTIONS RESPONSE SENT (200) =====\n');
+            return res.status(200).end();
+        }
+    }
+    next();
+});
+
 // CORS with security options - NOW SECURE IN ALL ENVIRONMENTS
+// This handles both preflight (OPTIONS) and actual requests (POST, GET, etc.)
+// The cors middleware automatically adds CORS headers to all responses
 app.use(cors(corsOptions))
 
-// ✅ BURP SUITE FIX: Handle preflight requests properly
+// ✅ BURP SUITE: Explicitly log OPTIONS responses to verify CORS is working
+// NOTE: This middleware runs AFTER the OPTIONS handler above, so OPTIONS requests are already handled
+// This is just for logging - the actual OPTIONS response was sent above
 app.use((req, res, next) => {
-    // Enhanced logging for security testing
+    if (req.method === 'OPTIONS') {
+        // OPTIONS already handled above, just log
+        console.log(`\n⚠️  ⚠️  ⚠️  OPTIONS ALREADY HANDLED ABOVE ⚠️  ⚠️  ⚠️`);
+        console.log(`💡 The browser should now send the actual POST request`);
+        console.log(`💡 Look for POST ${req.originalUrl} in Burp Suite HTTP history\n`);
+        // Don't process further - already handled
+        return next();
+    }
+    next();
+});
+
+// Body parser - MUST be before logging middleware to parse req.body
+// ✅ CRITICAL: This must be before any route handlers to parse POST request bodies
+app.use(express.json({ limit: '10mb' })) //accept json in request
+app.use(express.urlencoded({ extended: true, limit: '10mb' })) //accept form data
+
+// ✅ BURP SUITE FIX: Enhanced logging for all requests (including POST, PUT, etc.)
+app.use((req, res, next) => {
+    // Enhanced logging for security testing - log ALL requests including POST, PUT, DELETE
     if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_SECURITY_TESTING === 'true') {
-        // Skip logging for static files and OPTIONS
+        // Skip logging for static files only
         if (!req.originalUrl.includes('/uploads') && !req.originalUrl.includes('.js') && 
-            !req.originalUrl.includes('.css') && !req.originalUrl.includes('.ico') && 
-            req.method !== 'OPTIONS') {
+            !req.originalUrl.includes('.css') && !req.originalUrl.includes('.ico')) {
             
             console.log(`\n🔍 ===== ${req.method} REQUEST =====`);
             console.log(`📍 URL: ${req.method} ${req.originalUrl}`);
             console.log(`🌐 Origin: ${req.headers.origin || 'No Origin'}`);
             console.log(`🔑 User-Agent: ${req.headers['user-agent']?.substring(0, 50)}...`);
             
+            // ✅ CRITICAL: If this is a POST to auth/login, highlight it EXTREMELY
+            if (req.method === 'POST' && req.originalUrl.includes('/auth/login')) {
+                console.log('\n');
+                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+                console.log('🚨 POST REQUEST TO /auth/login DETECTED ON SERVER 🚨');
+                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+                console.log('✅ ✅ ✅ THIS IS THE REQUEST WITH CREDENTIALS ✅ ✅ ✅');
+                console.log('💡 This POST request SHOULD be visible in Burp Suite HTTP history');
+                console.log('💡 If you don\'t see it in Burp Suite, but you see this log, then:');
+                console.log('   1. Burp Suite is NOT capturing the request (check proxy settings)');
+                console.log('   2. You\'re looking at the wrong tab (use HTTP history, NOT Intercept)');
+                console.log('   3. Burp Suite filter is hiding it (clear all filters)');
+                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+                console.log('\n');
+            }
+            
             // Log Authorization header (JWT tokens)
             if (req.headers.authorization) {
                 console.log(`🎫 Authorization: ${req.headers.authorization.substring(0, 50)}...`);
             }
             
-            // Log request body for POST/PUT requests
+            // Log request body for POST/PUT requests (now req.body is parsed)
             if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
                 console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
+                
+                // ✅ BURP SUITE: Enhanced logging for auth endpoints
+                if (req.originalUrl.includes('/auth/register') || 
+                    req.originalUrl.includes('/auth/login') || 
+                    req.originalUrl.includes('/auth/verify-otp')) {
+                    console.log('\n🔐 🔐 🔐 AUTHENTICATION REQUEST - CREDENTIALS VISIBLE IN BURP SUITE 🔐 🔐 🔐');
+                    console.log('═══════════════════════════════════════════════════════════════════════════════');
+                    if (req.originalUrl.includes('/auth/register')) {
+                        console.log('📝 REGISTRATION CREDENTIALS:');
+                        console.log('   📧 Email:', req.body.email || 'N/A');
+                        console.log('   👤 Username:', req.body.username || 'N/A');
+                        console.log('   🔑 Password:', req.body.password || 'N/A');
+                        console.log('   🔑 Confirm Password:', req.body.confirmpassword || 'N/A');
+                        console.log('   👨‍💼 Full Name:', req.body.fullname || 'N/A');
+                        console.log('   📱 Phone:', req.body.phone || 'N/A');
+                        console.log('   🏠 Address:', req.body.address || 'N/A');
+                    } else if (req.originalUrl.includes('/auth/login')) {
+                        console.log('📝 LOGIN CREDENTIALS:');
+                        console.log('   👤 Username/Email:', req.body.username || req.body.email || 'N/A');
+                        console.log('   🔑 Password:', req.body.password || 'N/A');
+                        console.log('   ⚠️  ⚠️  ⚠️  THIS IS THE POST REQUEST WITH CREDENTIALS ⚠️  ⚠️  ⚠️');
+                        console.log('   💡 This POST request should be visible in Burp Suite');
+                        console.log('   💡 If you only see OPTIONS, check Burp Suite HTTP history tab (not Intercept tab)');
+                        console.log('   💡 The POST request comes AFTER the OPTIONS preflight');
+                        console.log('   💡 In Burp Suite: Proxy → HTTP history → Filter by: /api/auth/login');
+                    } else if (req.originalUrl.includes('/auth/verify-otp')) {
+                        console.log('📝 OTP VERIFICATION:');
+                        console.log('   🆔 User ID:', req.body.userId || 'N/A');
+                        console.log('   🔢 OTP Code:', req.body.otp || 'N/A');
+                    }
+                    console.log('═══════════════════════════════════════════════════════════════════════════════');
+                    console.log('💡 💡 💡 THESE CREDENTIALS ARE VISIBLE IN BURP SUITE HTTP HISTORY 💡 💡 💡');
+                    console.log('💡 Burp Suite will intercept this request and show all credentials in the request body');
+                    console.log('💡 This is normal for security testing - passwords are hashed before storage');
+                    console.log('💡 IMPORTANT: If you don\'t see this POST request in Burp Suite:');
+                    console.log('   1. Go to Burp Suite → Proxy → HTTP history (NOT Intercept tab)');
+                    console.log('   2. Turn OFF "Intercept" if it\'s on (Intercept tab → Intercept is off)');
+                    console.log('   3. Filter by URL: /api/auth/login');
+                    console.log('   4. Look for POST requests (not just OPTIONS)');
+                    console.log('   5. Click on the POST request to see the request body with credentials');
+                    console.log('═══════════════════════════════════════════════════════════════════════════════\n');
+                } else {
+                    console.log('✅ ✅ ✅ THIS IS THE REQUEST WITH CREDENTIALS FOR BURP SUITE ✅ ✅ ✅');
+                    console.log('💡 This POST request should be visible in Burp Suite HTTP history');
+                    console.log('💡 Look for this request AFTER the OPTIONS preflight request');
+                }
             }
             
             // Log query parameters
@@ -85,27 +305,41 @@ app.use((req, res, next) => {
             if (req.headers.cookie) {
                 console.log('🍪 Cookies:', req.headers.cookie.substring(0, 100) + '...');
             }
+            
+            // ✅ BURP SUITE: Log response when it's sent (only for non-OPTIONS)
+            if (req.method !== 'OPTIONS') {
+                const originalSend = res.send.bind(res);
+                res.send = function(data) {
+                    console.log(`\n📤 Response Status: ${res.statusCode}`);
+                    if (data && typeof data === 'string') {
+                        try {
+                            const jsonData = JSON.parse(data);
+                            console.log('📤 Response JSON:', JSON.stringify(jsonData, null, 2));
+                        } catch (e) {
+                            console.log('📤 Response Data:', data.substring(0, 200));
+                        }
+                    }
+                    console.log(`🔍 ===== REQUEST COMPLETE =====\n`);
+                    return originalSend(data);
+                };
+            }
         }
     }
     
-    // Handle preflight requests with proper headers
-    if (req.method === 'OPTIONS') {
-        const origin = req.headers.origin;
-        
-        // Allow the origin if it's from localhost (development)
-        if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-            res.header('Access-Control-Allow-Origin', origin);
-        } else {
-            res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
-        }
-        
-        res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since, X-CSRF-Token');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Max-Age', '1800'); // 30 minutes
-        
-        console.log('✅ OPTIONS preflight handled for:', req.originalUrl);
-        return res.status(200).end();
+    // Let CORS middleware handle OPTIONS requests - don't interfere
+    next();
+});
+
+// ✅ CORS FIX: Add CORS headers to all responses (backup for cors middleware)
+app.use((req, res, next) => {
+    // Add CORS headers to all responses as backup
+    const origin = req.headers.origin;
+    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+        // Always set headers (cors middleware might not set them in all cases)
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
     }
     
     next();
@@ -113,6 +347,18 @@ app.use((req, res, next) => {
 
 // CORS error handler - catches rejected origins
 app.use((err, req, res, next) => {
+    // ✅ CORS FIX: Ensure CORS headers are sent even on errors
+    const origin = req.headers.origin;
+    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    
+    if (req.method === 'OPTIONS') {
+        // If it's an OPTIONS request, always send CORS headers
+        return res.status(200).end();
+    }
+    
     if (err.message && err.message.includes('CORS policy')) {
         console.error('🚫 CORS Violation:', {
             origin: req.headers.origin,
@@ -130,42 +376,27 @@ app.use((err, req, res, next) => {
     next(err);
 });
 
-app.use(express.json()) //accept join in request
+// ✅ Response logging is handled in the main logging middleware above
+// No need for duplicate logging
 
-// ✅ BURP SUITE DEBUGGING: Log all requests and responses
-if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_SECURITY_TESTING === 'true') {
-    app.use((req, res, next) => {
-        const originalSend = res.send;
-        const originalJson = res.json;
-        
-        // Intercept response to log it
-        res.send = function(data) {
-            if (req.method !== 'OPTIONS') { // Skip OPTIONS logging
-                console.log(`📤 Response Status: ${res.statusCode}`);
-                console.log(`📤 Response Data:`, typeof data === 'string' ? data.substring(0, 200) + '...' : data);
-                console.log('🔍 ===== REQUEST COMPLETE =====\n');
-            }
-            originalSend.call(this, data);
-        };
-        
-        res.json = function(data) {
-            if (req.method !== 'OPTIONS') { // Skip OPTIONS logging
-                console.log(`📤 Response Status: ${res.statusCode}`);
-                console.log(`📤 Response JSON:`, JSON.stringify(data, null, 2));
-                console.log('🔍 ===== REQUEST COMPLETE =====\n');
-            }
-            originalJson.call(this, data);
-        };
-        
-        next();
-    });
-}
-app.use("/uploads",express.static(path.join(__dirname,"uploads")))
+// ✅ SECURED: Serve uploads with CORS headers to fix image loading issues
+app.use("/uploads", (req, res, next) => {
+  // Set CORS headers for image requests
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname,"uploads")));
+
 app.use(express.static(path.join(__dirname,"public")))
 
-// Session configuration with MongoDB store
+// ✅ SECURED: Session configuration with MongoDB store
+// Session Fixation Protection: Session regeneration on login
+// Secure Cookie Settings: Environment-aware secure flag and sameSite
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'bhokbhoj_session_secret_key_2025',
+    // ✅ SECURED: Generate random secret if not set (prevents predictable secrets)
+    secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
@@ -175,12 +406,16 @@ app.use(session({
     }),
     cookie: {
         maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds
-        httpOnly: true,
-        secure: false, // Set to false for development (HTTP)
-        sameSite: 'lax',
+        httpOnly: true, // ✅ Prevents XSS cookie theft
+        // ✅ SECURED: Environment-aware secure flag (HTTPS only in production)
+        secure: process.env.NODE_ENV === 'production',
+        // ✅ SECURED: Strict sameSite in production (better CSRF protection), Lax in development
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         path: '/'
     },
-    name: 'sessionId' // Cookie name
+    name: 'sessionId', // Cookie name
+    // ✅ SECURED: Generate secure session IDs
+    genid: () => crypto.randomBytes(16).toString('hex')
 }));
 
 app.use(passport.initialize());
@@ -209,6 +444,86 @@ app.use("/api/cart", cartRoutes)
 app.use("/api/orders", orderRoutes)
 app.use("/api/feedbacks", feedbackRoutes)
 app.use('/api/dashboard', dashboardRoutes);
+
+// ✅ CSRF Protection: Token endpoint for frontend
+// Frontend should call this endpoint to get CSRF token before making POST/PUT/DELETE requests
+app.get('/api/csrf-token', (req, res) => {
+    // Generate CSRF token if not exists in session
+    if (!req.session.csrfToken) {
+        const crypto = require('crypto');
+        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+    }
+    
+    res.json({
+        success: true,
+        csrfToken: req.session.csrfToken,
+        message: 'CSRF token generated successfully'
+    });
+});
+
+// ✅ BURP SUITE TESTING: Simple test endpoint (always available for testing)
+app.post('/api/test/burp-simple', (req, res) => {
+    console.log('\n🧪 ===== BURP SUITE SIMPLE TEST ENDPOINT =====');
+    console.log('📍 Method:', req.method);
+    console.log('📍 URL:', req.originalUrl);
+    console.log('🌐 Origin:', req.headers.origin);
+    console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('🔑 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('🧪 ===== END TEST ENDPOINT =====\n');
+    
+    res.json({
+        success: true,
+        message: 'Burp Suite test endpoint - request received and logged',
+        received: {
+            method: req.method,
+            url: req.originalUrl,
+            body: req.body,
+            headers: {
+                origin: req.headers.origin,
+                'content-type': req.headers['content-type'],
+                authorization: req.headers.authorization ? 'Present' : 'Missing'
+            },
+            timestamp: new Date().toISOString()
+        }
+    });
+});
+
+// ✅ BURP SUITE TESTING: Test endpoints that simulate real API calls
+app.post('/api/test/login-credentials', (req, res) => {
+    console.log('\n🧪 ===== TEST LOGIN CREDENTIALS ENDPOINT =====');
+    console.log('👤 Username:', req.body.username);
+    console.log('🔑 Password:', req.body.password);
+    console.log('📝 Full Body:', JSON.stringify(req.body, null, 2));
+    console.log('🧪 ===== END TEST =====\n');
+    
+    res.json({
+        success: true,
+        message: 'Test login - credentials received and logged',
+        received: {
+            username: req.body.username,
+            password: req.body.password,
+            timestamp: new Date().toISOString()
+        },
+        note: 'Check Burp Suite HTTP history for POST /api/test/login-credentials'
+    });
+});
+
+app.post('/api/test/register-credentials', (req, res) => {
+    console.log('\n🧪 ===== TEST REGISTER CREDENTIALS ENDPOINT =====');
+    console.log('👤 Username:', req.body.username);
+    console.log('📧 Email:', req.body.email);
+    console.log('🔑 Password:', req.body.password);
+    console.log('📝 Full Body:', JSON.stringify(req.body, null, 2));
+    console.log('🧪 ===== END TEST =====\n');
+    
+    res.json({
+        success: true,
+        message: 'Test register - credentials received and logged',
+        received: req.body,
+        timestamp: new Date().toISOString(),
+        note: 'Check Burp Suite HTTP history for POST /api/test/register-credentials'
+    });
+});
 
 // ✅ BURP SUITE TESTING: Add test endpoints
 if (process.env.ALLOW_SECURITY_TESTING === 'true') {

@@ -52,6 +52,12 @@ const tokenBlacklist = new Set();
  * Enhanced JWT validation with security checks
  */
 exports.authenticateUser= async(req, res,next) =>{
+    // ✅ CORS FIX: Skip authentication for OPTIONS preflight requests
+    // CORS middleware will handle OPTIONS requests
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+    
     try{
         const authHeader= req.headers.authorization // from request header
         if(!authHeader){
@@ -126,6 +132,11 @@ exports.authenticateUser= async(req, res,next) =>{
  * Admin authorization with enhanced security
  */
 exports.isAdmin=(req,res,next) =>{
+    // ✅ CORS FIX: Skip admin check for OPTIONS preflight requests
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+    
     // Check if user is authenticated
     if(!req.user) {
         return res.status(401).json(

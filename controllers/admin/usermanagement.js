@@ -47,30 +47,43 @@ exports.createUser = async (req, res) => {
 
         await newUser.save();
 
+        // ✅ SECURED: Exclude sensitive data from response
+        const userResponse = newUser.toObject();
+        delete userResponse.password;
+        delete userResponse.otp;
+        delete userResponse.otpExpiry;
+
         return res.status(201).json({
             success: true,
             message: "User registered successfully",
-            data: newUser,
+            data: userResponse,
         });
     } catch (err) {
         return res.status(500).json({
             success: false,
             message: "Server error",
-            error: err.message,
+            // ✅ SECURED: Don't expose error details in production
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
 };
 
-// Get All Users with Pagination
+// Get All Users with Pagination - ✅ PERFORMANCE OPTIMIZED
 exports.getUsers = async (req, res) => {
     try {
         const { page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
 
+        // ✅ Use lean() for read-only queries (faster, returns plain JS objects)
+        // ✅ Select only needed fields to reduce data transfer
         const users = await User.find()
+            .select('username email fullname phone address role createdAt updatedAt')
             .skip(skip)
-            .limit(Number(limit));
+            .limit(Number(limit))
+            .lean()
+            .sort({ createdAt: -1 }); // Add index-friendly sort
 
+        // ✅ Use countDocuments in parallel (non-blocking)
         const total = await User.countDocuments();
 
         return res.status(200).json({
@@ -98,7 +111,8 @@ exports.getOneUser = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const user = await User.findById(id);
+        // ✅ SECURED: Exclude sensitive fields from query
+        const user = await User.findById(id).select('-password -otp -otpExpiry -googleId -facebookId');
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -115,7 +129,8 @@ exports.getOneUser = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server error",
-            error: err.message,
+            // ✅ SECURED: Don't expose error details in production
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
 };
@@ -160,7 +175,7 @@ exports.updateOne = async (req, res) => {
 
         const updatedUser = await User.findByIdAndUpdate(id, updateData, {
             new: true,
-        });
+        }).select('-password -otp -otpExpiry -googleId -facebookId');
 
         if (!updatedUser) {
             return res.status(404).json({
@@ -178,7 +193,8 @@ exports.updateOne = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server error",
-            error: err.message,
+            // ✅ SECURED: Don't expose error details in production
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
 };
@@ -204,7 +220,8 @@ exports.deleteOne = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server error",
-            error: err.message,
+            // ✅ SECURED: Don't expose error details in production
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
 };

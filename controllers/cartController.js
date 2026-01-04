@@ -113,9 +113,18 @@ exports.getCart = async (req, res) => {
 // Add item to cart
 exports.addToCart = async (req, res) => {
     try {
-        console.log('=== Add to Cart Request ===');
-        console.log('Headers:', req.headers.authorization ? 'Token present' : 'No token');
-        console.log('User:', req.user ? req.user._id : 'No user');
+        // 🔍 BURP SUITE TESTING: Log add to cart request details
+        console.log('\n🔍 ADD TO CART REQUEST INTERCEPTED:');
+        console.log('═══════════════════════════════════════');
+        console.log('🛒 Product ID:', req.body.productId);
+        console.log('📦 Quantity:', req.body.quantity || 1);
+        console.log('👤 User ID:', req.user ? req.user._id : 'Not authenticated');
+        console.log('👤 Username:', req.user ? req.user.username : 'Not authenticated');
+        console.log('🎫 Authorization Token:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
+        console.log('🌐 Origin:', req.headers.origin);
+        console.log('🔗 Referer:', req.headers.referer);
+        console.log('🕐 Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════\n');
         
         if (!req.user || !req.user._id) {
             console.log('Authentication failed - no user found');
@@ -127,8 +136,6 @@ exports.addToCart = async (req, res) => {
         
         const userId = req.user._id;
         const { productId, quantity = 1 } = req.body;
-
-        console.log('Add to cart request:', { userId, productId, quantity });
 
         if (!productId) {
             return res.status(400).json({
@@ -161,6 +168,37 @@ exports.addToCart = async (req, res) => {
             cart = new Cart({ userId, items: [] });
         }
 
+        // ✅ SECURITY: Validate quantity (must be positive integer)
+        if (quantity < 1 || !Number.isInteger(quantity) || isNaN(quantity)) {
+            return res.status(400).json({
+                success: false,
+                message: "Quantity must be a positive integer (at least 1)",
+                security: {
+                    attackType: "Invalid Quantity Manipulation",
+                    severity: "HIGH",
+                    description: "Attempted to add invalid quantity. Quantity must be a positive integer.",
+                    action: "BLOCKED"
+                }
+            });
+        }
+
+        // ✅ SECURITY: Prevent price manipulation - always use product price from database
+        // Check if price was sent in request (should not be)
+        if (req.body.price !== undefined) {
+            console.log('🚨 SECURITY ALERT: Price manipulation attempt detected in addToCart!');
+            return res.status(400).json({
+                success: false,
+                message: "Price cannot be modified. Price is set from product catalog.",
+                security: {
+                    attackType: "Price Manipulation Attack",
+                    severity: "CRITICAL",
+                    description: "Attempted to modify product price when adding to cart. Price manipulation attacks are blocked. Prices are always retrieved from the product catalog to prevent fraud.",
+                    action: "BLOCKED",
+                    note: "Price is automatically set from product database and cannot be changed by client requests."
+                }
+            });
+        }
+
         // Check if product already exists in cart
         const existingItemIndex = cart.items.findIndex(
             item => item.productId.toString() === productId
@@ -169,15 +207,17 @@ exports.addToCart = async (req, res) => {
         if (existingItemIndex > -1) {
             // Update quantity
             cart.items[existingItemIndex].quantity += quantity;
-            console.log('Updated existing item quantity');
+            // ✅ SECURITY: Always refresh price from database
+            cart.items[existingItemIndex].price = product.price;
+            console.log('Updated existing item quantity and refreshed price from database');
         } else {
-            // Add new item
+            // Add new item - always use price from product database
             cart.items.push({
                 productId,
                 quantity,
-                price: product.price
+                price: product.price // Always from database, never from request
             });
-            console.log('Added new item to cart');
+            console.log('Added new item to cart with price from database');
         }
 
         await cart.save();
@@ -217,6 +257,17 @@ exports.addToCart = async (req, res) => {
 
         console.log('Cart transformation completed');
 
+        // 🔍 BURP SUITE TESTING: Log add to cart response
+        console.log('\n✅ ADD TO CART RESPONSE SENT:');
+        console.log('═══════════════════════════════════════');
+        console.log('👤 User ID:', userId);
+        console.log('🛒 Product ID:', productId);
+        console.log('📦 Quantity Added:', quantity);
+        console.log('💰 Product Price:', product.price);
+        console.log('🛒 Total Cart Items:', transformedCart.items ? transformedCart.items.length : 0);
+        console.log('🕐 Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════\n');
+
         return res.status(200).json({
             success: true,
             message: "Item added to cart successfully",
@@ -236,6 +287,17 @@ exports.addToCart = async (req, res) => {
 // Update cart item quantity
 exports.updateCartItem = async (req, res) => {
     try {
+        // 🔍 BURP SUITE TESTING: Log cart update request details
+        console.log('\n🔍 CART UPDATE REQUEST INTERCEPTED:');
+        console.log('═══════════════════════════════════════');
+        console.log('🛒 Product ID:', req.body.productId);
+        console.log('📦 Quantity:', req.body.quantity);
+        console.log('💰 Price (if provided):', req.body.price);
+        console.log('👤 User ID:', req.user ? req.user._id : 'Not authenticated');
+        console.log('🌐 Origin:', req.headers.origin);
+        console.log('🕐 Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════\n');
+        
         if (!req.user || !req.user._id) {
             return res.status(401).json({
                 success: false,
@@ -244,7 +306,7 @@ exports.updateCartItem = async (req, res) => {
         }
         
         const userId = req.user._id;
-        const { productId, quantity } = req.body;
+        const { productId, quantity, price } = req.body;
 
         if (!productId || quantity === undefined) {
             return res.status(400).json({
@@ -253,10 +315,33 @@ exports.updateCartItem = async (req, res) => {
             });
         }
 
-        if (quantity < 1) {
+        // ✅ SECURITY: Validate quantity (must be positive integer)
+        if (quantity < 1 || !Number.isInteger(quantity) || isNaN(quantity)) {
             return res.status(400).json({
                 success: false,
-                message: "Quantity must be at least 1"
+                message: "Quantity must be a positive integer (at least 1)",
+                security: {
+                    attackType: "Invalid Quantity Manipulation",
+                    severity: "HIGH",
+                    description: "Attempted to set invalid quantity. Quantity must be a positive integer.",
+                    action: "BLOCKED"
+                }
+            });
+        }
+
+        // ✅ SECURITY: Prevent price manipulation - price should not be in request body
+        if (price !== undefined) {
+            console.log('🚨 SECURITY ALERT: Price manipulation attempt detected!');
+            return res.status(400).json({
+                success: false,
+                message: "Price cannot be modified. Price is set from product catalog.",
+                security: {
+                    attackType: "Price Manipulation Attack",
+                    severity: "CRITICAL",
+                    description: "Attempted to modify product price in cart. Price manipulation attacks are blocked. Prices are always retrieved from the product catalog to prevent fraud.",
+                    action: "BLOCKED",
+                    note: "Price is automatically set from product database and cannot be changed by client requests."
+                }
             });
         }
 
@@ -279,7 +364,25 @@ exports.updateCartItem = async (req, res) => {
             });
         }
 
+        // ✅ SECURITY: Re-validate product exists and get current price from database
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        if (!product.isAvailable) {
+            return res.status(400).json({
+                success: false,
+                message: "Product is no longer available"
+            });
+        }
+
+        // ✅ SECURITY: Always use price from product database, never from request
         cart.items[itemIndex].quantity = quantity;
+        cart.items[itemIndex].price = product.price; // Always use database price
         await cart.save();
 
         await cart.populate({

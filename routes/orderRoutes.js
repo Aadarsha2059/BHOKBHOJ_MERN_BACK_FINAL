@@ -3,21 +3,27 @@ const router = express.Router();
 const orderController = require("../controllers/orderController");
 const { authenticateUser } = require("../middlewares/authorizedUser");
 const { isAdmin } = require("../middlewares/roleMiddleware");
+const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS } = require("../middlewares/securityMiddleware");
+const securityValidation = require("../middlewares/securityValidation");
 
 // All order routes require authentication
 router.use(authenticateUser);
 
 // Get purchase trend for the last 7 days
-router.get('/trend', orderController.getPurchaseTrend);
+// ✅ SECURITY: Validate query parameters for reflected XSS
+router.get('/trend', securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.getPurchaseTrend);
 
 // Create order from cart
-router.post("/", orderController.createOrder);
+// ✅ SECURITY: securityValidation detects malicious payloads in delivery instructions, payment method, etc.
+router.post("/", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.createOrder);
 
 // Get user's orders
-router.get("/", orderController.getUserOrders);
+// ✅ SECURITY: Validate query parameters (page, limit, status) for reflected XSS
+router.get("/", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.getUserOrders);
 
 // Get single order (✅ Already protected - checks userId)
-router.get("/:id", orderController.getOrderById);
+// ✅ SECURITY: Validate URL parameter for reflected XSS
+router.get("/:id", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.getOrderById);
 
 // Cancel order (✅ Already protected - checks userId)
 router.put("/:id/cancel", orderController.cancelOrder);

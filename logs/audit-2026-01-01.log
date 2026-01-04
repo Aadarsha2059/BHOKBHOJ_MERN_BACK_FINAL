@@ -244,3 +244,5 @@
 {"ip":"127.0.0.1","level":"info","message":"GET /api/categories","responseTime":36,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2026-01-01 15:31:57","userId":null}
 {"ip":"127.0.0.1","level":"info","message":"GET /api/products?page=1&limit=12&search=&category=&sortBy=name&sortOrder=asc","responseTime":68,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2026-01-01 15:31:57","userId":null}
 {"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":101,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2026-01-01 15:31:57","userId":"6918b3644d6380c628cab5e9"}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":21,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2026-01-01 15:34:30","userId":"6918b3644d6380c628cab5e9"}
+{"ip":"127.0.0.1","level":"info","message":"GET /api/cart","responseTime":25,"service":"bhokbhoj-api","statusCode":304,"timestamp":"2026-01-01 15:34:54","userId":"6918b3644d6380c628cab5e9"}

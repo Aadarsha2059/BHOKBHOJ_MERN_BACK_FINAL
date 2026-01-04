@@ -86,7 +86,7 @@ const orderSchema = new mongoose.Schema({
     },
     orderStatus: {
         type: String,
-        enum: ["pending", "received", "cancelled"],
+        enum: ["pending", "accepted", "rejected", "received", "cancelled"],
         default: "pending"
     },
     estimatedDeliveryTime: {
@@ -98,6 +98,10 @@ const orderSchema = new mongoose.Schema({
     orderDate: {
         type: Date,
         default: Date.now
+    },
+    rejectionReason: {
+        type: String,
+        default: ""
     }
 }, {
     timestamps: true

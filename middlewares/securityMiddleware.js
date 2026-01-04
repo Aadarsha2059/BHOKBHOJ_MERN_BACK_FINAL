@@ -169,36 +169,91 @@ const sanitizeXSS = (req, res, next) => {
 // ==========================================
 // 4. CROSS-SITE REQUEST FORGERY (CSRF) PROTECTION
 // ==========================================
+const crypto = require('crypto');
+
+// Generate secure random CSRF token
+const generateCSRFToken = () => {
+    return crypto.randomBytes(32).toString('hex');
+};
+
+// CSRF Protection Middleware
 const csrfProtection = (req, res, next) => {
-    // In a real implementation, you would:
-    // 1. Generate a secure random token
-    // 2. Store it in the user session
-    // 3. Include it in forms as a hidden field
-    // 4. Verify the token on POST/PUT/DELETE requests
-    
-    // Example implementation:
-    /*
+    // Skip CSRF validation for safe methods (GET, HEAD, OPTIONS)
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        // Generate and store token in session for GET requests
+        if (!req.session.csrfToken) {
+            req.session.csrfToken = generateCSRFToken();
+        }
+        // Make token available to views/templates
+        res.locals.csrfToken = req.session.csrfToken;
+        return next();
+    }
+
+    // For state-changing methods (POST, PUT, DELETE, PATCH), validate token
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+        // Extract token from multiple sources (body, query, header)
         const token = req.body._csrf || req.query._csrf || req.headers['x-csrf-token'];
-        
-        if (!token || token !== req.session.csrfToken) {
+        const sessionToken = req.session.csrfToken;
+
+        // Validate token exists and matches session token
+        if (!token) {
             return res.status(403).json({
                 success: false,
-                message: 'Invalid CSRF token'
+                message: 'CSRF token missing',
+                error: 'CSRF_TOKEN_MISSING',
+                security: {
+                    attackType: 'CSRF Attack',
+                    severity: 'HIGH',
+                    description: 'Request missing CSRF token. This may indicate a Cross-Site Request Forgery attack attempt.',
+                    action: 'BLOCKED'
+                }
             });
         }
+
+        if (!sessionToken) {
+            return res.status(403).json({
+                success: false,
+                message: 'CSRF session token not found',
+                error: 'CSRF_SESSION_MISSING',
+                security: {
+                    attackType: 'CSRF Attack',
+                    severity: 'HIGH',
+                    description: 'Session CSRF token not found. Please refresh the page and try again.',
+                    action: 'BLOCKED'
+                }
+            });
+        }
+
+        if (token !== sessionToken) {
+            // Log security violation
+            console.log('\n🚨 CSRF ATTACK DETECTED 🚨');
+            console.log('═══════════════════════════════════════════════════════════════');
+            console.log('📍 Endpoint:', req.method, req.originalUrl);
+            console.log('🌐 Origin:', req.headers.origin || 'N/A');
+            console.log('👤 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
+            console.log('🕐 Timestamp:', new Date().toISOString());
+            console.log('⚠️  Token Mismatch: Provided token does not match session token');
+            console.log('═══════════════════════════════════════════════════════════════\n');
+
+            return res.status(403).json({
+                success: false,
+                message: 'Invalid CSRF token',
+                error: 'CSRF_TOKEN_MISMATCH',
+                security: {
+                    attackType: 'CSRF Attack',
+                    severity: 'CRITICAL',
+                    description: 'CSRF token validation failed. This request may be a Cross-Site Request Forgery attack attempt and has been BLOCKED.',
+                    action: 'BLOCKED',
+                    timestamp: new Date().toISOString(),
+                    endpoint: `${req.method} ${req.originalUrl}`
+                }
+            });
+        }
+
+        // Token is valid - regenerate for next request (token rotation)
+        req.session.csrfToken = generateCSRFToken();
     }
-    
-    // Generate new token for GET requests
-    if (req.method === 'GET') {
-        req.session.csrfToken = generateSecureToken();
-        res.locals.csrfToken = req.session.csrfToken;
-    }
-    */
-   
-    // For this example, we'll just add a comment about what should be implemented
-    console.log('CSRF Protection: In a real implementation, validate CSRF tokens here');
-    
+
     next();
 };
 

@@ -8,12 +8,24 @@ async function testEmail() {
         console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? '***configured***' : 'NOT SET');
         console.log('');
 
-        // Create transporter
+        // Create transporter with same configuration as login
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            service: "gmail",
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: false, // true for 465, false for other ports
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
+            },
+            connectionTimeout: 30000,
+            greetingTimeout: 30000,
+            socketTimeout: 30000,
+            pool: true,
+            maxConnections: 1,
+            maxMessages: 3,
+            tls: {
+                rejectUnauthorized: false
             }
         });
 

@@ -44,19 +44,32 @@ exports.createOrder = async (req, res) => {
 
 exports.getOrders = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search = "" } = req.query;
+        const { page = 1, limit = 50, search = "", status = "" } = req.query;
         const skip = (page - 1) * limit;
 
         let filter = {};
         if (search) {
-            filter.orderStatus = { $regex: search, $options: "i" };
+            filter.$or = [
+                { orderStatus: { $regex: search, $options: "i" } },
+                { paymentMethod: { $regex: search, $options: "i" } }
+            ];
+        }
+        if (status) {
+            filter.orderStatus = status;
         }
 
-        const orders = await Order.find(filter)
-            .skip(skip)
-            .limit(Number(limit));
-
-        const total = await Order.countDocuments(filter);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries with population
+        const [orders, total] = await Promise.all([
+            Order.find(filter)
+                .populate('userId', 'username email fullname phone address')
+                .populate('items.productId', 'name price filepath')
+                .select('userId items subtotal deliveryFee tax totalAmount deliveryAddress deliveryInstructions paymentMethod paymentStatus orderStatus estimatedDeliveryTime orderDate createdAt updatedAt')
+                .skip(skip)
+                .limit(Number(limit))
+                .sort({ createdAt: -1 })
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            Order.countDocuments(filter)
+        ]);
 
         return res.status(200).json({
             success: true,
@@ -74,6 +87,84 @@ exports.getOrders = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server error",
+        });
+    }
+};
+
+// Accept order (admin only)
+exports.acceptOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        if (order.orderStatus !== "pending") {
+            return res.status(400).json({
+                success: false,
+                message: `Order cannot be accepted. Current status: ${order.orderStatus}`
+            });
+        }
+
+        order.orderStatus = "accepted";
+        await order.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Order accepted successfully",
+            data: order
+        });
+    } catch (err) {
+        console.error("Accept Order Error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error"
+        });
+    }
+};
+
+// Reject order (admin only)
+exports.rejectOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        if (order.orderStatus !== "pending") {
+            return res.status(400).json({
+                success: false,
+                message: `Order cannot be rejected. Current status: ${order.orderStatus}`
+            });
+        }
+
+        order.orderStatus = "rejected";
+        if (reason) {
+            order.rejectionReason = reason;
+        }
+        await order.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Order rejected successfully",
+            data: order
+        });
+    } catch (err) {
+        console.error("Reject Order Error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error"
         });
     }
 };

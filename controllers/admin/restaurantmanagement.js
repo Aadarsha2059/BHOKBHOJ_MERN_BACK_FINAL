@@ -61,12 +61,16 @@ exports.getRestaurants = async (req, res) => {
             ];
         }
 
-        const restaurants = await Restaurant.find(filter)
-            .skip(skip)
-            .limit(Number(limit))
-            .sort({ createdAt: -1 });
-
-        const total = await Restaurant.countDocuments(filter);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        const [restaurants, total] = await Promise.all([
+            Restaurant.find(filter)
+                .select('name location contact filepath createdAt updatedAt')
+                .skip(skip)
+                .limit(Number(limit))
+                .sort({ createdAt: -1 })
+                .lean(), // ✅ Use lean() for read-only queries (much faster)
+            Restaurant.countDocuments(filter)
+        ]);
 
         // Transform restaurants with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;

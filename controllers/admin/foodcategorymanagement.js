@@ -32,7 +32,11 @@ exports.createCategory = async (req, res) => {
 
 exports.getAllCategories = async (req, res) => {
     try {
-        const categories = await Category.find();
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only queries
+        const categories = await Category.find()
+            .select('name filepath createdAt updatedAt')
+            .lean()
+            .sort({ name: 1 });
         console.log('Retrieved categories:', categories.map(cat => ({ name: cat.name, filepath: cat.filepath })));
         return res.json({ success: true, data: categories, message: "All category" });
     } catch (err) {
@@ -134,7 +138,11 @@ exports.debugCategories = async (req, res) => {
 
 exports.getCategories = async (req, res) => {
     try {
-        const categories = await Category.find().sort({ name: 1 });
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only queries
+        const categories = await Category.find()
+            .select('name filepath createdAt updatedAt')
+            .sort({ name: 1 })
+            .lean();
 
         // Transform categories with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;

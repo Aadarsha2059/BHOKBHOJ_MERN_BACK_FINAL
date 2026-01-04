@@ -7,6 +7,12 @@ const User = require('../models/User');
 
 // Authentication guard - verifies JWT token
 const authGuard = async (req, res, next) => {
+    // ✅ CORS FIX: Skip authentication for OPTIONS preflight requests
+    // CORS middleware will handle OPTIONS requests
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+    
     try {
         // Get token from header
         const token = req.headers.authorization?.split(' ')[1]; // Bearer <token>

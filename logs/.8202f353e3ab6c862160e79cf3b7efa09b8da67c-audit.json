@@ -39,6 +39,16 @@
             "date": 1767253453999,
             "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\audit-2026-01-01.log",
             "hash": "8743c3191276163b230a9a74717c5a049b1d49fc9428e7865a7c91fd12a71eba"
+        },
+        {
+            "date": 1767440117334,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\audit-2026-01-03.log",
+            "hash": "d551bd7a960ef63e47160e96a338f0007cf19faf381d6a9a278b9f8e084d1726"
+        },
+        {
+            "date": 1767508235499,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\audit-2026-01-04.log",
+            "hash": "0c8f227b635ab03c3188f29c8fcb086cf7b2cd7d37ac55ae23000eb36d28e9a6"
         }
     ],
     "hashType": "sha256"

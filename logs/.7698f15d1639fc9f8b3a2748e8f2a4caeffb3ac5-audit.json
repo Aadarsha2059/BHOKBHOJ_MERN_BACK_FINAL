@@ -39,6 +39,16 @@
             "date": 1767253453875,
             "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\security-2026-01-01.log",
             "hash": "304456dd50c50ddb83981840e3c6e1e688577e92a62508162010960875195b2b"
+        },
+        {
+            "date": 1767440117329,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\security-2026-01-03.log",
+            "hash": "ea2fe6a5aa1c6e6e5595ad036d4a5ddf10967f3d127349f4e6e5efb64675f937"
+        },
+        {
+            "date": 1767508235497,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\security-2026-01-04.log",
+            "hash": "562d25514dc2b378b5ac73e85ad4a18a549223e23be9205b0c5b64a6844ed3cc"
         }
     ],
     "hashType": "sha256"

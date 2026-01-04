@@ -128,96 +128,103 @@ const auditMiddleware = async (req, res, next) => {
         return originalJson(data);
     };
     
-    // Wait for response to finish
-    res.on('finish', async () => {
-        try {
-            const responseTime = Date.now() - startTime;
-            const userAgent = req.get('user-agent') || '';
-            const ipAddress = req.ip || req.connection.remoteAddress || 'Unknown';
-            
-            // Determine status
-            let status = 'SUCCESS';
-            if (res.statusCode >= 500) status = 'ERROR';
-            else if (res.statusCode >= 400) status = 'FAILURE';
-            else if (res.statusCode >= 300) status = 'WARNING';
-            
-            // Create audit log data
-            const auditData = {
-                // User info
-                userId: req.user?.id || req.user?._id || null,
-                username: req.user?.username || 'Anonymous',
-                userEmail: req.user?.email || null,
-                userRole: req.user?.role || 'guest',
+    // ✅ PERFORMANCE FIX: Make audit logging non-blocking (async, fire and forget)
+    // This ensures the response is sent immediately without waiting for audit log to save
+    res.on('finish', () => {
+        // Use setImmediate to defer audit logging - don't block the response
+        setImmediate(async () => {
+            try {
+                const responseTime = Date.now() - startTime;
+                const userAgent = req.get('user-agent') || '';
+                const ipAddress = req.ip || req.connection.remoteAddress || 'Unknown';
                 
-                // Action details
-                action: getActionType(req.originalUrl, req.method),
-                actionCategory: getActionCategory(req.originalUrl, req.method),
-                method: req.method,
-                endpoint: req.originalUrl,
+                // Determine status
+                let status = 'SUCCESS';
+                if (res.statusCode >= 500) status = 'ERROR';
+                else if (res.statusCode >= 400) status = 'FAILURE';
+                else if (res.statusCode >= 300) status = 'WARNING';
                 
-                // Status
-                status: status,
-                statusCode: res.statusCode,
-                
-                // Description
-                description: `${req.method} ${req.originalUrl} - ${status}`,
-                
-                // Request/Response data (sanitized)
-                requestBody: sanitizeData(req.body),
-                responseData: responseData?.success !== undefined ? { success: responseData.success, message: responseData.message } : null,
-                
-                // Network info
-                ipAddress: ipAddress,
-                userAgent: userAgent,
-                deviceType: detectDevice(userAgent),
-                browser: detectBrowser(userAgent),
-                os: detectOS(userAgent),
-                
-                // Performance
-                responseTime: responseTime,
-                
-                // Security
-                isSecure: req.secure || req.protocol === 'https',
-                isSuspicious: false,
-                
-                // Metadata
-                sessionId: req.sessionID || null,
-                correlationId: req.headers['x-correlation-id'] || null,
-                
-                timestamp: new Date()
-            };
-            
-            // Check for suspicious activity
-            if (res.statusCode === 401 || res.statusCode === 403) {
-                auditData.isSuspicious = true;
-                auditData.actionCategory = 'SECURITY';
-                auditData.action = 'UNAUTHORIZED_ACCESS';
-            }
-            
-            // Save to database
-            await AuditLog.createLog(auditData);
-            
-            // Log to Winston
-            if (status === 'ERROR' || status === 'FAILURE') {
-                logger.error(`${req.method} ${req.originalUrl}`, {
+                // Create audit log data (simplified for performance)
+                const auditData = {
+                    // User info
+                    userId: req.user?.id || req.user?._id || null,
+                    username: req.user?.username || 'Anonymous',
+                    userEmail: req.user?.email || null,
+                    userRole: req.user?.role || 'guest',
+                    
+                    // Action details
+                    action: getActionType(req.originalUrl, req.method),
+                    actionCategory: getActionCategory(req.originalUrl, req.method),
+                    method: req.method,
+                    endpoint: req.originalUrl,
+                    
+                    // Status
+                    status: status,
                     statusCode: res.statusCode,
-                    userId: auditData.userId,
-                    ip: ipAddress,
-                    responseTime
+                    
+                    // Description
+                    description: `${req.method} ${req.originalUrl} - ${status}`,
+                    
+                    // Request/Response data (minimal for performance - only for errors)
+                    requestBody: (status === 'ERROR' || status === 'FAILURE') ? sanitizeData(req.body) : null,
+                    responseData: (status === 'ERROR' || status === 'FAILURE' && responseData?.success !== undefined) 
+                        ? { success: responseData.success, message: responseData.message } 
+                        : null,
+                    
+                    // Network info (simplified)
+                    ipAddress: ipAddress,
+                    userAgent: userAgent.substring(0, 100), // Limit length for performance
+                    deviceType: detectDevice(userAgent),
+                    browser: detectBrowser(userAgent),
+                    os: detectOS(userAgent),
+                    
+                    // Performance
+                    responseTime: responseTime,
+                    
+                    // Security
+                    isSecure: req.secure || req.protocol === 'https',
+                    isSuspicious: false,
+                    
+                    // Metadata
+                    sessionId: req.sessionID || null,
+                    correlationId: req.headers['x-correlation-id'] || null,
+                    
+                    timestamp: new Date()
+                };
+                
+                // Check for suspicious activity
+                if (res.statusCode === 401 || res.statusCode === 403) {
+                    auditData.isSuspicious = true;
+                    auditData.actionCategory = 'SECURITY';
+                    auditData.action = 'UNAUTHORIZED_ACCESS';
+                }
+                
+                // Save to database (non-blocking - fire and forget)
+                AuditLog.createLog(auditData).catch(err => {
+                    // Silently fail - don't log errors for audit failures to avoid spam
+                    if (process.env.NODE_ENV === 'development') {
+                        logger.error('Audit logging failed:', err);
+                    }
                 });
-            } else {
-                logger.info(`${req.method} ${req.originalUrl}`, {
-                    statusCode: res.statusCode,
-                    userId: auditData.userId,
-                    ip: ipAddress,
-                    responseTime
-                });
+                
+                // Log to Winston (only for errors/failures to reduce overhead)
+                if (status === 'ERROR' || status === 'FAILURE') {
+                    logger.error(`${req.method} ${req.originalUrl}`, {
+                        statusCode: res.statusCode,
+                        userId: auditData.userId,
+                        ip: ipAddress,
+                        responseTime
+                    });
+                }
+                
+            } catch (error) {
+                // Don't let audit logging break the application
+                // Silently fail in production to avoid performance impact
+                if (process.env.NODE_ENV === 'development') {
+                    logger.error('Audit logging failed:', error);
+                }
             }
-            
-        } catch (error) {
-            // Don't let audit logging break the application
-            logger.error('Audit logging failed:', error);
-        }
+        });
     });
     
     next();

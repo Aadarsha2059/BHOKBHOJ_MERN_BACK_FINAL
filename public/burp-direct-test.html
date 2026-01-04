@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Burp Suite Test - No CORS Preflight</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #14b8a6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0d9488;
+        }
+        .response {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Direct Burp Suite Test (Bypass CORS Preflight)</h1>
+    <p><strong>These tests use simple requests that don't trigger CORS preflight.</strong></p>
+    <p><strong>You should see POST requests directly in Burp Suite without OPTIONS first.</strong></p>
+    
+    <div class="test-section">
+        <h3>Test 1: Login (POST with credentials)</h3>
+        <input type="text" id="user1" placeholder="Username" value="testuser">
+        <input type="password" id="pass1" placeholder="Password" value="test123">
+        <button onclick="test1()">Test Login POST</button>
+        <div id="resp1" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 2: Register (POST with credentials)</h3>
+        <input type="text" id="user2" placeholder="Username" value="newuser">
+        <input type="email" id="email2" placeholder="Email" value="new@test.com">
+        <input type="password" id="pass2" placeholder="Password" value="pass123">
+        <button onclick="test2()">Test Register POST</button>
+        <div id="resp2" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 3: OTP Verification (POST with OTP)</h3>
+        <input type="text" id="userId3" placeholder="User ID" value="test123">
+        <input type="text" id="otp3" placeholder="OTP" value="123456">
+        <button onclick="test3()">Test OTP POST</button>
+        <div id="resp3" class="response"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📋 Instructions</h3>
+        <ol>
+            <li>Open <strong>Burp Suite</strong> → <strong>Proxy</strong> → <strong>HTTP history</strong></li>
+            <li>Click any test button above</li>
+            <li>In HTTP history, you should see <strong>POST</strong> requests (not just OPTIONS)</li>
+            <li>Click POST request → <strong>Request</strong> tab → See credentials in body</li>
+        </ol>
+        <p><strong>Note:</strong> If you still only see OPTIONS, check Burp Suite intercept settings.</p>
+    </div>
+
+    <script>
+        const API = 'http://localhost:5050/api';
+
+        function show(id, data, err = false) {
+            const el = document.getElementById(id);
+            el.textContent = JSON.stringify(data, null, 2);
+            el.className = 'response ' + (err ? 'error' : 'success');
+        }
+
+        async function test1() {
+            try {
+                const r = await fetch(`${API}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('user1').value,
+                        password: document.getElementById('pass1').value
+                    })
+                });
+                const d = await r.json();
+                show('resp1', { status: r.status, message: '✅ Check Burp Suite for POST /api/auth/login', data: d });
+            } catch (e) {
+                show('resp1', { error: e.message }, true);
+            }
+        }
+
+        async function test2() {
+            try {
+                const r = await fetch(`${API}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('user2').value,
+                        email: document.getElementById('email2').value,
+                        password: document.getElementById('pass2').value
+                    })
+                });
+                const d = await r.json();
+                show('resp2', { status: r.status, message: '✅ Check Burp Suite for POST /api/auth/register', data: d });
+            } catch (e) {
+                show('resp2', { error: e.message }, true);
+            }
+        }
+
+        async function test3() {
+            try {
+                const r = await fetch(`${API}/auth/verify-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: document.getElementById('userId3').value,
+                        otp: document.getElementById('otp3').value
+                    })
+                });
+                const d = await r.json();
+                show('resp3', { status: r.status, message: '✅ Check Burp Suite for POST /api/auth/verify-otp', data: d });
+            } catch (e) {
+                show('resp3', { error: e.message }, true);
+            }
+        }
+    </script>
+</body>
+</html>
+
