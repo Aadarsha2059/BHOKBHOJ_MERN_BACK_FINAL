@@ -107,4 +107,10 @@ const orderSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// ✅ PERFORMANCE: Add indexes for common query patterns
+orderSchema.index({ userId: 1 }); // For filtering by user
+orderSchema.index({ createdAt: -1 }); // For sorting by creation date
+orderSchema.index({ orderStatus: 1 }); // For filtering by status
+orderSchema.index({ paymentStatus: 1 }); // For filtering by payment status
+
 module.exports = mongoose.model("Order", orderSchema);

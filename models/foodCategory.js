@@ -5,4 +5,7 @@ const CategorySchema= new mongoose.Schema({
     filepath:{type:String}
 },{ timestamps: true });
 
+// ✅ PERFORMANCE: Add index for sorting by name (used in getAllCategories)
+CategorySchema.index({ name: 1 });
+
 module.exports =mongoose.model('foodCategory',CategorySchema);

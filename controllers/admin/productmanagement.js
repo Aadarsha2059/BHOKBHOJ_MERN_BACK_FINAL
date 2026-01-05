@@ -112,8 +112,15 @@ exports.createProduct = async (req, res) => {
 
 exports.getProducts = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search = "" } = req.query;
-        const skip = (page - 1) * limit;
+        const { page = 1, limit, search = "" } = req.query;
+        
+        console.log('🔍 Get Products Request:', {
+            page,
+            limit,
+            search,
+            userId: req.user?._id,
+            timestamp: new Date().toISOString()
+        });
 
         let filter = {};
         if (search) {
@@ -124,95 +131,217 @@ exports.getProducts = async (req, res) => {
         }
 
         // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        // For admin view, if no limit is specified, return all products (or use a high limit)
+        const queryLimit = limit ? Number(limit) : 1000; // Default to 1000 for admin view
+        const skip = limit ? (Number(page) - 1) * queryLimit : 0;
+
+        console.log('📦 Fetching products with filter:', filter);
+        
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        // Removed sellerId populate - not needed for admin list view (improves performance)
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("categoryId", "name filepath")
                 .populate("restaurantId", "name location filepath")
-                .populate("sellerId", "firstName email")
-                .select('name price categoryId restaurantId type filepath description createdAt updatedAt')
+                .select('name price categoryId restaurantId type filepath description isAvailable createdAt updatedAt')
                 .skip(skip)
-                .limit(Number(limit))
+                .limit(queryLimit)
                 .sort({ createdAt: -1 })
                 .lean(), // ✅ Use lean() for read-only queries (much faster)
             Product.countDocuments(filter)
         ]);
 
+        console.log('✅ Products found:', products.length, 'out of', total);
+
         // Transform products with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedProducts = products.map(product => transformProductData(product, baseUrl));
 
+        console.log('✅ Sending products response');
+
         return res.status(200).json({
             success: true,
-            message: "Products fetched",
+            message: "Products fetched successfully",
             data: transformedProducts,
             pagination: {
                 total,
                 page: Number(page),
-                limit: Number(limit),
-                totalPages: Math.ceil(total / limit)
+                limit: queryLimit,
+                totalPages: limit ? Math.ceil(total / queryLimit) : 1
             }
         });
     } catch (err) {
-        console.error("Get Products Error:", err);
+        console.error("❌ Get Products Error:", err);
+        console.error("Error stack:", err.stack);
         return res.status(500).json({
             success: false,
-            message: "Server error"
+            message: err.message || "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 };
 
 exports.getOneProduct = async (req, res) => {
     try {
+        const productId = req.params.id;
+        
+        console.log('🔍 Get One Product Request:', {
+            productId: productId,
+            userId: req.user?._id,
+            timestamp: new Date().toISOString()
+        });
+        
+        // Validate product ID format
+        if (!productId) {
+            console.log('❌ Missing product ID');
+            return res.status(400).json({ success: false, message: "Product ID is required" });
+        }
+        
+        if (!productId.match(/^[0-9a-fA-F]{24}$/)) {
+            console.log('❌ Invalid product ID format:', productId);
+            return res.status(400).json({ success: false, message: "Invalid product ID format" });
+        }
+        
         // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
-        const product = await Product.findById(req.params.id)
+        console.log('📦 Fetching product from database...');
+        const product = await Product.findById(productId)
             .populate("categoryId", "name filepath")
             .populate("restaurantId", "name location filepath")
             .lean(); // ✅ Use lean() for faster read-only queries
         
         if (!product) {
+            console.log('❌ Product not found:', productId);
             return res.status(404).json({ success: false, message: "Product not found" });
         }
 
+        console.log('✅ Product found:', product.name);
+        
         // Transform product with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedProduct = transformProductData(product, baseUrl);
 
+        console.log('✅ Sending product response');
         res.status(200).json({ success: true, data: transformedProduct });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Server error" });
+        console.error("❌ Get One Product Error:", err);
+        console.error("Error stack:", err.stack);
+        res.status(500).json({ 
+            success: false, 
+            message: err.message || "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 };
 
 exports.updateProduct = async (req, res) => {
     try {
+        const productId = req.params.id;
+        
+        // Validate product exists first
+        const existingProduct = await Product.findById(productId);
+        if (!existingProduct) {
+            return res.status(404).json({ success: false, message: "Product not found" });
+        }
+        
+        // Build update data with all fields
         const updateData = {
-            name: req.body.name,
+            name: req.body.name?.trim(),
             price: req.body.price,
             categoryId: req.body.categoryId,
-            type: req.body.type,
+            type: req.body.type?.trim()?.toLowerCase(),
             restaurantId: req.body.restaurantId,
         };
+        
+        // Add optional fields if provided
+        if (req.body.description !== undefined) {
+            updateData.description = req.body.description?.trim() || '';
+        }
+        if (req.body.isAvailable !== undefined) {
+            updateData.isAvailable = req.body.isAvailable === true || req.body.isAvailable === 'true';
+        }
+        
+        // Handle image upload
         if (req.file) {
             updateData.filepath = req.file.filename;
         }
-        const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
+        
+        // Validate required fields
+        if (!updateData.name || !updateData.price || !updateData.categoryId || !updateData.type || !updateData.restaurantId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Missing required fields: name, price, categoryId, type, restaurantId" 
+            });
+        }
+        
+        // Validate price
+        const numericPrice = Number(updateData.price);
+        if (isNaN(numericPrice) || numericPrice <= 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Price must be a positive number" 
+            });
+        }
+        updateData.price = numericPrice;
+        
+        // Validate type
+        if (!['indian', 'nepali'].includes(updateData.type)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Type must be 'Indian' or 'Nepali'" 
+            });
+        }
+        
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and minimal populate for faster response
+        const updatedProduct = await Product.findByIdAndUpdate(
+            productId, 
+            updateData, 
+            { new: true, runValidators: true }
+        )
+            .populate("categoryId", "name filepath")
+            .populate("restaurantId", "name location filepath")
+            .lean();
+            
         if (!updatedProduct) {
             return res.status(404).json({ success: false, message: "Product not found" });
         }
-        res.status(200).json({ success: true, data: updatedProduct, message: "Product updated successfully" });
+        
+        // Transform product with full image URLs
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const transformedProduct = transformProductData(updatedProduct, baseUrl);
+        
+        res.status(200).json({ success: true, data: transformedProduct, message: "Product updated successfully" });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Server error" });
+        console.error("Update Product Error:", err);
+        console.error("Error stack:", err.stack);
+        res.status(500).json({ 
+            success: false, 
+            message: err.message || "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 };
 
 exports.deleteProduct = async (req, res) => {
     try {
-        const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-        if (!deletedProduct) {
+        const productId = req.params.id;
+        
+        // Validate product exists
+        const product = await Product.findById(productId);
+        if (!product) {
             return res.status(404).json({ success: false, message: "Product not found" });
         }
-        res.status(200).json({ success: true, message: "Product deleted" });
+        
+        // ✅ PERFORMANCE: Use deleteOne for faster deletion
+        await Product.deleteOne({ _id: productId });
+        
+        res.status(200).json({ success: true, message: "Product deleted successfully" });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Server error" });
+        console.error("Delete Product Error:", err);
+        console.error("Error stack:", err.stack);
+        res.status(500).json({ 
+            success: false, 
+            message: err.message || "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 };

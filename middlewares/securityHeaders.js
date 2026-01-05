@@ -174,16 +174,22 @@ const corsOptions = {
             return callback(null, true);
         }
 
-        // In development, be more permissive for security testing
+        // ✅ CRITICAL FIX: In development, always allow localhost/127.0.0.1 origins
+        // This ensures http://localhost:5173 is always allowed
         if (process.env.NODE_ENV !== 'production') {
-            // Allow any localhost/127.0.0.1 origin in development
-            if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('burp')) {
+            // Allow any localhost/127.0.0.1 origin in development (case-insensitive check)
+            const originLower = origin.toLowerCase();
+            if (originLower.includes('localhost') || originLower.includes('127.0.0.1') || originLower.includes('burp')) {
+                console.log('✅ CORS ALLOWED (development):', origin);
                 return callback(null, true);
             }
         }
 
-        // Check if origin is in whitelist
-        if (allowedOrigins.indexOf(origin) !== -1) {
+        // Check if origin is in whitelist (case-insensitive)
+        const originLower = origin.toLowerCase();
+        const isAllowed = allowedOrigins.some(allowed => allowed.toLowerCase() === originLower);
+        
+        if (isAllowed) {
             callback(null, true);
         } else {
             // ✅ SECURE: Reject unauthorized origins (but log for debugging)

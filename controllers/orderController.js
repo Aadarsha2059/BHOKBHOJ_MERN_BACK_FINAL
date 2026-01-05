@@ -10,25 +10,56 @@ const mongoose = require("mongoose");
 // Create order from cart
 exports.createOrder = async (req, res) => {
     try {
-        // 🔍 BURP SUITE TESTING: Log checkout/order creation request details
-        console.log('\n🔍 CHECKOUT/ORDER CREATION REQUEST INTERCEPTED:');
-        console.log('═══════════════════════════════════════');
-        console.log('👤 User ID:', req.user ? req.user._id : 'Not authenticated');
-        console.log('👤 Username:', req.user ? req.user.username : 'Not authenticated');
-        console.log('💳 Payment Method:', req.body.paymentMethod || 'cash');
-        console.log('📝 Delivery Instructions:', req.body.deliveryInstructions || 'None');
-        console.log('🎫 Authorization Token:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
-        console.log('🌐 Origin:', req.headers.origin);
-        console.log('🔗 Referer:', req.headers.referer);
+        // 🔍 BURP SUITE TESTING: Log detailed request information
+        console.log('\n🔍 CREATE ORDER REQUEST INTERCEPTED (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('📍 Method:', req.method);
+        console.log('📍 Endpoint:', req.originalUrl);
+        console.log('📍 Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        console.log('🌐 Origin:', req.headers.origin || 'N/A');
+        console.log('🌐 Referer:', req.headers.referer || 'N/A');
+        console.log('👤 User Agent:', req.headers['user-agent'] || 'N/A');
+        console.log('🎫 Authorization Header:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
+        console.log('🔑 Content-Type:', req.headers['content-type'] || 'N/A');
+        console.log('📋 Accept:', req.headers.accept || 'N/A');
+        console.log('🌍 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
         console.log('🕐 Timestamp:', new Date().toISOString());
-        console.log('═══════════════════════════════════════\n');
+        console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
+        console.log('═══════════════════════════════════════════════════════════════\n');
         
         const userId = req.user._id;
         
         const {
             deliveryInstructions = "",
-            paymentMethod = "cash"
+            paymentMethod = "cash",
+            paymentService = null, // eSewa, Khalti, etc.
+            cartDetails = null // Cart details from frontend for Burp Suite visibility
         } = req.body;
+        
+        // 🔍 BURP SUITE TESTING: Log payment details
+        console.log('\n💳 PAYMENT DETAILS (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('💳 Payment Method:', paymentMethod);
+        console.log('💳 Payment Service:', paymentService || 'N/A (Cash on Delivery)');
+        console.log('💳 Payment Type:', paymentMethod === 'online' ? 'Online Payment' : 'Cash on Delivery');
+        if (cartDetails) {
+            console.log('🛒 Cart Details from Request:');
+            console.log('   Total Items:', cartDetails.totalItems || cartDetails.totalQuantity || 'N/A');
+            console.log('   Total Quantity:', cartDetails.totalQuantity || 'N/A');
+            console.log('   Total Price:', cartDetails.totalPrice || 'N/A', 'NPR');
+            if (cartDetails.items && Array.isArray(cartDetails.items)) {
+                console.log('   Cart Items:');
+                cartDetails.items.forEach((item, index) => {
+                    console.log(`      Item ${index + 1}:`);
+                    console.log(`         Product ID: ${item.productId || 'N/A'}`);
+                    console.log(`         Product Name: ${item.productName || 'N/A'}`);
+                    console.log(`         Quantity: ${item.quantity || 0}`);
+                    console.log(`         Unit Price: ${item.unitPrice || 0} NPR`);
+                    console.log(`         Item Subtotal: ${item.itemSubtotal || 0} NPR`);
+                });
+            }
+        }
+        console.log('═══════════════════════════════════════════════════════════════\n');
 
         // Get user's profile to use their address
         const user = await User.findById(userId);
@@ -66,19 +97,29 @@ exports.createOrder = async (req, res) => {
         console.log("Cart found:", cart ? "Yes" : "No");
         if (cart) {
             console.log("Cart items count:", cart.items.length);
-            console.log("Cart items:", JSON.stringify(cart.items, null, 2));
-            
-            // Check each item structure
+            console.log('\n🛒 CART DETAILS (BURP SUITE):');
+            console.log('═══════════════════════════════════════════════════════════════');
+            console.log('🛒 Cart ID:', cart._id);
+            console.log('👤 Cart User ID:', cart.userId);
+            console.log('📦 Total Cart Items:', cart.items.length);
+            console.log('🛒 Cart Items Details:');
             cart.items.forEach((item, index) => {
-                console.log(`Item ${index}:`, {
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    price: item.price,
-                    hasProductId: !!item.productId,
-                    productIdType: typeof item.productId,
-                    isProductIdObject: item.productId && typeof item.productId === 'object'
-                });
+                console.log(`   Cart Item ${index + 1}:`);
+                console.log(`      Product ID: ${item.productId?._id || item.productId || 'N/A'}`);
+                console.log(`      Product Name: ${item.productId?.name || 'N/A'}`);
+                console.log(`      Category: ${item.productId?.categoryId?.name || 'N/A'}`);
+                console.log(`      Restaurant: ${item.productId?.restaurantId?.name || 'N/A'}`);
+                console.log(`      Restaurant Location: ${item.productId?.restaurantId?.location || 'N/A'}`);
+                console.log(`      Quantity: ${item.quantity || 0}`);
+                console.log(`      Price in Cart: ${item.price || 0} NPR`);
+                console.log(`      Item Subtotal: ${(item.quantity || 0) * (item.price || 0)} NPR`);
+                console.log(`      Product Available: ${item.productId?.isAvailable !== false ? 'Yes' : 'No'}`);
             });
+            const cartSubtotal = cart.items.reduce((sum, item) => {
+                return sum + ((item.quantity || 0) * (item.price || 0));
+            }, 0);
+            console.log('💰 Cart Subtotal:', cartSubtotal, 'NPR');
+            console.log('═══════════════════════════════════════════════════════════════\n');
         }
 
         if (!cart || cart.items.length === 0) {
@@ -100,6 +141,165 @@ exports.createOrder = async (req, res) => {
                     message: `${item.productId?.name || 'Product'} is not available`
                 });
             }
+        }
+
+        // ✅ SECURITY: Validate cartDetails if provided (from Burp Suite interception)
+        if (cartDetails && cartDetails.items && Array.isArray(cartDetails.items)) {
+            console.log('\n🔒 SECURITY VALIDATION: Checking cartDetails for price/quantity manipulation...');
+            
+            // Create a map of product IDs from cart for quick lookup
+            const cartItemMap = new Map();
+            cart.items.forEach(cartItem => {
+                const productId = (cartItem.productId?._id || cartItem.productId)?.toString();
+                if (productId) {
+                    cartItemMap.set(productId, {
+                        quantity: cartItem.quantity || 1,
+                        price: cartItem.price || 0
+                    });
+                }
+            });
+            
+            // Validate each item in cartDetails
+            for (const requestItem of cartDetails.items) {
+                const productId = requestItem.productId?.toString();
+                const cartItem = cartItemMap.get(productId);
+                
+                if (!cartItem) {
+                    console.log('🚨 SECURITY ALERT: Product not found in cart!');
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid product in request. Product not found in your cart.",
+                        security: {
+                            attackType: "Unauthorized Product Addition",
+                            severity: "CRITICAL",
+                            description: "Attempted to add a product that is not in the user's cart.",
+                            action: "BLOCKED",
+                            productId: productId
+                        }
+                    });
+                }
+                
+                // ✅ SECURITY: Validate quantity - must match cart exactly, cannot be 0, negative, or different
+                const requestQuantity = requestItem.quantity || 0;
+                const cartQuantity = cartItem.quantity;
+                
+                if (requestQuantity <= 0) {
+                    console.log('🚨 SECURITY ALERT: Invalid quantity (0 or negative)!');
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid quantity. Quantity must be a positive integer (at least 1).",
+                        security: {
+                            attackType: "Quantity Manipulation Attack",
+                            severity: "CRITICAL",
+                            description: `Attempted to set invalid quantity (${requestQuantity}). Quantity must be a positive integer and cannot be 0 or negative.`,
+                            action: "BLOCKED",
+                            requestedQuantity: requestQuantity,
+                            actualCartQuantity: cartQuantity,
+                            productId: productId,
+                            productName: requestItem.productName || 'Unknown'
+                        }
+                    });
+                }
+                
+                if (requestQuantity !== cartQuantity) {
+                    console.log('🚨 SECURITY ALERT: Quantity mismatch!');
+                    return res.status(400).json({
+                        success: false,
+                        message: "Quantity mismatch detected. Quantity cannot be modified.",
+                        security: {
+                            attackType: "Quantity Manipulation Attack",
+                            severity: "CRITICAL",
+                            description: `Attempted to modify quantity from ${cartQuantity} to ${requestQuantity}. Quantity manipulation is not allowed.`,
+                            action: "BLOCKED",
+                            requestedQuantity: requestQuantity,
+                            actualCartQuantity: cartQuantity,
+                            productId: productId,
+                            productName: requestItem.productName || 'Unknown'
+                        }
+                    });
+                }
+                
+                // ✅ SECURITY: Re-fetch product from database to get actual price
+                const product = await Product.findById(productId);
+                if (!product) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Product ${requestItem.productName || 'Unknown'} no longer exists`,
+                        security: {
+                            attackType: "Invalid Product",
+                            severity: "HIGH",
+                            description: "Product not found in database.",
+                            action: "BLOCKED",
+                            productId: productId
+                        }
+                    });
+                }
+                
+                const actualPrice = product.price;
+                const requestPrice = requestItem.unitPrice || 0;
+                
+                // ✅ SECURITY: Validate price - must match database exactly, cannot be 0, negative, or different
+                if (requestPrice <= 0) {
+                    console.log('🚨 SECURITY ALERT: Invalid price (0 or negative)!');
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid price. Price cannot be 0 or negative.",
+                        security: {
+                            attackType: "Price Manipulation Attack",
+                            severity: "CRITICAL",
+                            description: `Attempted to set invalid price (${requestPrice} NPR). Price must be a positive number and cannot be 0 or negative.`,
+                            action: "BLOCKED",
+                            requestedPrice: requestPrice,
+                            actualDatabasePrice: actualPrice,
+                            productId: productId,
+                            productName: requestItem.productName || 'Unknown'
+                        }
+                    });
+                }
+                
+                if (requestPrice !== actualPrice) {
+                    console.log('🚨 SECURITY ALERT: Price mismatch!');
+                    return res.status(400).json({
+                        success: false,
+                        message: "Price mismatch detected. Price cannot be modified.",
+                        security: {
+                            attackType: "Price Manipulation Attack",
+                            severity: "CRITICAL",
+                            description: `Attempted to modify price from ${actualPrice} NPR to ${requestPrice} NPR. Price manipulation is not allowed. Prices are always retrieved from the product catalog.`,
+                            action: "BLOCKED",
+                            requestedPrice: requestPrice,
+                            actualDatabasePrice: actualPrice,
+                            priceDifference: Math.abs(actualPrice - requestPrice),
+                            productId: productId,
+                            productName: requestItem.productName || 'Unknown'
+                        }
+                    });
+                }
+            }
+            
+            // ✅ SECURITY: Validate total price matches calculated total
+            const calculatedTotal = cartDetails.items.reduce((sum, item) => {
+                return sum + ((item.quantity || 0) * (item.unitPrice || 0));
+            }, 0);
+            
+            if (cartDetails.totalPrice !== calculatedTotal) {
+                console.log('🚨 SECURITY ALERT: Total price mismatch!');
+                return res.status(400).json({
+                    success: false,
+                    message: "Total price mismatch detected. Total price cannot be manipulated.",
+                    security: {
+                        attackType: "Total Price Manipulation Attack",
+                        severity: "CRITICAL",
+                        description: `Attempted to modify total price. Requested: ${cartDetails.totalPrice} NPR, Calculated: ${calculatedTotal} NPR. Total price is automatically calculated and cannot be modified.`,
+                        action: "BLOCKED",
+                        requestedTotal: cartDetails.totalPrice,
+                        calculatedTotal: calculatedTotal,
+                        difference: Math.abs(cartDetails.totalPrice - calculatedTotal)
+                    }
+                });
+            }
+            
+            console.log('✅ Security validation passed: All prices and quantities match database and cart.');
         }
 
         // ✅ SECURITY: Create order items with price validation and recalculation
@@ -225,15 +425,39 @@ exports.createOrder = async (req, res) => {
         await order.save();
         console.log("Order saved successfully, ID:", order._id);
 
-        // Log payment data
+        // Log payment data with all details for Burp Suite
         let paymentmodeValue = order.paymentMethod;
         if (paymentmodeValue === 'cash') paymentmodeValue = 'cod';
+        // If online payment, use the payment service (esewa/khalti)
+        if (paymentMethod === 'online' && paymentService) {
+            paymentmodeValue = paymentService; // esewa or khalti
+        }
+        
+        console.log('\n💳 PAYMENT RECORD CREATION (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('💳 Payment Mode:', paymentmodeValue);
+        console.log('💳 Original Payment Method:', order.paymentMethod);
+        console.log('💳 Payment Service:', paymentService || 'N/A (Cash on Delivery)');
+        console.log('💳 Food Items:', order.items.map(i => i.productName).join(", "));
+        console.log('💳 Total Quantity:', order.items.reduce((sum, i) => sum + i.quantity, 0));
+        console.log('💳 Total Price:', order.totalAmount, 'NPR');
+        console.log('💳 Order ID:', order._id.toString());
+        console.log('💳 Customer Name:', user.fullname || user.username || 'N/A');
+        console.log('💳 Customer Phone:', user.phone || 'N/A');
+        console.log('💳 Customer Address:', user.address || 'N/A');
+        console.log('═══════════════════════════════════════════════════════════════\n');
+        
         const payment = new PaymentMethod({
             food: order.items.map(i => i.productName).join(", "),
             quantity: order.items.reduce((sum, i) => sum + i.quantity, 0),
             totalprice: order.totalAmount,
             paymentmode: paymentmodeValue,
-            orderId: order._id.toString()
+            orderId: order._id.toString(),
+            customerInfo: {
+                name: user.fullname || user.username || 'N/A',
+                phone: user.phone || 'N/A',
+                address: user.address || 'N/A'
+            }
         });
         await payment.save();
 
@@ -347,29 +571,106 @@ exports.createOrder = async (req, res) => {
             }
         });
 
-        // 🔍 BURP SUITE TESTING: Log checkout/order creation response
-        console.log('\n✅ CHECKOUT/ORDER CREATION RESPONSE SENT:');
-        console.log('═══════════════════════════════════════');
+        // 🔍 BURP SUITE TESTING: Log detailed response information
+        console.log('\n✅ CREATE ORDER RESPONSE SENT (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
         console.log('🆔 Order ID:', order._id);
         console.log('👤 User ID:', userId);
-        console.log('👤 Username:', user.username);
-        console.log('📧 User Email:', user.email);
+        console.log('👤 Username:', user.username || 'N/A');
+        console.log('👤 Full Name:', user.fullname || 'N/A');
+        console.log('📧 User Email:', user.email || 'N/A');
+        console.log('📞 User Phone:', user.phone || 'N/A');
         console.log('💳 Payment Method:', paymentMethod);
+        console.log('💳 Payment Service:', paymentService || 'N/A (Cash on Delivery)');
+        console.log('💳 Payment Type:', paymentMethod === 'online' ? 'Online Payment' : 'Cash on Delivery');
         console.log('📦 Total Items:', orderItems.length);
-        console.log('💰 Subtotal:', subtotal);
-        console.log('🚚 Delivery Fee:', deliveryFee);
-        console.log('📊 Tax:', tax);
-        console.log('💵 Total Amount:', totalAmount);
+        console.log('🛒 Order Items Details:');
+        orderItems.forEach((item, index) => {
+            console.log(`   Item ${index + 1}:`);
+            console.log(`      Product ID: ${item.productId}`);
+            console.log(`      Product Name: ${item.productName}`);
+            console.log(`      Category: ${item.categoryName}`);
+            console.log(`      Restaurant: ${item.restaurantName}`);
+            console.log(`      Restaurant Location: ${item.restaurantLocation}`);
+            console.log(`      Food Type: ${item.foodType}`);
+            console.log(`      Quantity: ${item.quantity}`);
+            console.log(`      Unit Price: ${item.price} NPR`);
+            console.log(`      Item Total: ${item.price * item.quantity} NPR`);
+        });
+        console.log('💰 Subtotal:', subtotal, 'NPR');
+        console.log('🚚 Delivery Fee:', deliveryFee, 'NPR');
+        console.log('📊 Tax (5%):', tax, 'NPR');
+        console.log('💵 Total Amount:', totalAmount, 'NPR');
         console.log('🏠 Delivery Address:', JSON.stringify(deliveryAddress, null, 2));
         console.log('📝 Delivery Instructions:', deliveryInstructions || 'None');
-        console.log('🕐 Order Time:', new Date().toISOString());
-        console.log('═══════════════════════════════════════\n');
+        console.log('⏰ Estimated Delivery Time:', estimatedDeliveryTime.toISOString());
+        console.log('🕐 Order Created At:', new Date().toISOString());
+        console.log('🕐 Response Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════════════════════════════\n');
 
         console.log("=== Order Creation Completed Successfully ===");
+        
+        // Convert order to plain object for response
+        const orderObject = order.toObject ? order.toObject() : order;
+        
+        // Build comprehensive response with ALL payment details for Burp Suite
+        const paymentResponse = {
+            orderId: order._id.toString(),
+            paymentMethod: paymentMethod,
+            paymentService: paymentService || (paymentMethod === 'online' ? 'Not specified' : 'Cash on Delivery'),
+            paymentMode: paymentmodeValue,
+            paymentStatus: 'pending',
+            totalAmount: order.totalAmount,
+            currency: 'NPR'
+        };
+        
+        // Build order summary with all details
+        const orderSummary = {
+            orderId: order._id.toString(),
+            userId: userId.toString(),
+            username: user.username || 'N/A',
+            userEmail: user.email || 'N/A',
+            userFullName: user.fullname || 'N/A',
+            userPhone: user.phone || 'N/A',
+            totalItems: orderItems.length,
+            totalQuantity: orderItems.reduce((sum, i) => sum + i.quantity, 0),
+            subtotal: subtotal,
+            deliveryFee: deliveryFee,
+            tax: tax,
+            totalAmount: totalAmount,
+            paymentMethod: paymentMethod,
+            paymentService: paymentService || 'N/A',
+            deliveryAddress: deliveryAddress,
+            deliveryInstructions: deliveryInstructions || 'None',
+            estimatedDeliveryTime: estimatedDeliveryTime.toISOString(),
+            orderItems: orderItems.map(item => ({
+                productId: item.productId.toString(),
+                productName: item.productName,
+                categoryName: item.categoryName,
+                restaurantName: item.restaurantName,
+                restaurantLocation: item.restaurantLocation,
+                foodType: item.foodType,
+                quantity: item.quantity,
+                unitPrice: item.price,
+                itemSubtotal: item.price * item.quantity
+            }))
+        };
+        
         return res.status(201).json({
             success: true,
             message: "Order created successfully",
-            data: order
+            data: {
+                ...orderObject,
+                paymentDetails: paymentResponse
+            },
+            payment: paymentResponse,
+            orderSummary: orderSummary,
+            // Request details for Burp Suite
+            requestDetails: {
+                paymentMethod: paymentMethod,
+                paymentService: paymentService || 'N/A',
+                cartDetails: cartDetails || null
+            }
         });
     } catch (err) {
         console.error("=== Create Order Error ===");
@@ -388,8 +689,19 @@ exports.createOrder = async (req, res) => {
 exports.getUserOrders = async (req, res) => {
     try {
         console.log("=== Get User Orders Started ===");
+        
+        // Check authentication
+        if (!req.user || !req.user._id) {
+            console.log("No user found in request");
+            return res.status(401).json({
+                success: false,
+                message: "Please login to view orders"
+            });
+        }
+        
         const userId = req.user._id;
         console.log("User ID:", userId);
+        console.log("Username:", req.user.username || 'N/A');
         
         const { page = 1, limit = 10, status = "" } = req.query;
         const skip = (page - 1) * limit;
@@ -428,6 +740,11 @@ exports.getUserOrders = async (req, res) => {
             // Order is already a plain object (from lean()), no need for toObject()
             const transformedOrder = { ...order };
             
+            // Ensure orderStatus is set (for frontend compatibility)
+            if (!transformedOrder.orderStatus && transformedOrder.status) {
+                transformedOrder.orderStatus = transformedOrder.status;
+            }
+            
             // Transform product images in order items
             if (transformedOrder.items && Array.isArray(transformedOrder.items)) {
                 transformedOrder.items = transformedOrder.items.map(item => {
@@ -439,6 +756,11 @@ exports.getUserOrders = async (req, res) => {
                             image: `${baseUrl}/uploads/${cleanFilename}`
                         };
                     }
+                    // Ensure all item fields are present
+                    transformedItem.productName = item.productName || item.productId?.name || 'Unknown Product';
+                    transformedItem.categoryName = item.categoryName || item.productId?.categoryId?.name || 'Unknown Category';
+                    transformedItem.restaurantName = item.restaurantName || item.productId?.restaurantId?.name || 'Unknown Restaurant';
+                    transformedItem.restaurantLocation = item.restaurantLocation || item.productId?.restaurantId?.location || 'Location not available';
                     return transformedItem;
                 });
             }
@@ -453,18 +775,24 @@ exports.getUserOrders = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Orders fetched successfully",
-            data: transformedOrders,
+            data: transformedOrders || [],
             pagination: {
-                total,
+                total: total || 0,
                 page: Number(page),
                 limit: Number(limit),
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil((total || 0) / limit)
             }
         });
     } catch (err) {
         console.error("=== Get Orders Error ===");
         console.error("Error details:", err);
+        console.error("Error message:", err.message);
         console.error("Error stack:", err.stack);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch orders",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
         return res.status(500).json({
             success: false,
             message: "Server error"

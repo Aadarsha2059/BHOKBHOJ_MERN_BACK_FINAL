@@ -74,10 +74,20 @@ exports.getRestaurants = async (req, res) => {
 
         // Transform restaurants with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const transformedRestaurants = restaurants.map(restaurant => transformRestaurantData(restaurant, baseUrl));
+        const transformedRestaurants = restaurants.map(restaurant => {
+            const transformed = transformRestaurantData(restaurant, baseUrl);
+            console.log('Transformed restaurant:', {
+                id: transformed._id,
+                name: transformed.name,
+                filepath: transformed.filepath,
+                image: transformed.image
+            });
+            return transformed;
+        });
 
         console.log('Found restaurants:', restaurants.length);
         console.log('Sample restaurant data:', restaurants[0]);
+        console.log('Sample transformed restaurant:', transformedRestaurants[0]);
 
         return res.status(200).json({
             success: true,
@@ -122,11 +132,12 @@ exports.updateRestaurant = async (req, res) => {
             updateData.filepath = filepath;
         }
 
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for faster response
         const restaurant = await Restaurant.findByIdAndUpdate(
             id,
             updateData,
             { new: true, runValidators: true }
-        );
+        ).lean();
 
         if (!restaurant) {
             return res.status(404).json({
@@ -183,7 +194,8 @@ exports.getRestaurantById = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const restaurant = await Restaurant.findById(id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
+        const restaurant = await Restaurant.findById(id).lean();
 
         if (!restaurant) {
             return res.status(404).json({
@@ -212,7 +224,8 @@ exports.getRestaurantById = async (req, res) => {
 
 exports.getOneRestaurant = async (req, res) => {
     try {
-        const restaurant = await Restaurant.findById(req.params.id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
+        const restaurant = await Restaurant.findById(req.params.id).lean();
         if (!restaurant) {
             return res.status(404).json({
                 success: false,

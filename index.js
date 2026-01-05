@@ -86,8 +86,9 @@ app.use((req, res, next) => {
         console.log('📋 Request Headers:', req.headers['access-control-request-headers'] || 'N/A');
         
         // Always set CORS headers for OPTIONS requests (be permissive in development)
-        // In development, allow all localhost origins
-        if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        // In development, allow all localhost origins (case-insensitive)
+        const originLower = origin ? origin.toLowerCase() : '';
+        if (!origin || originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
             const allowedOrigin = origin || 'http://localhost:5173';
             
             // ✅ CRITICAL: Match the exact headers requested by the browser
@@ -334,12 +335,16 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
     // Add CORS headers to all responses as backup
     const origin = req.headers.origin;
-    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-        // Always set headers (cors middleware might not set them in all cases)
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
+    // ✅ CRITICAL FIX: Always set CORS headers for localhost origins (case-insensitive)
+    if (origin) {
+        const originLower = origin.toLowerCase();
+        if (originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
+            // Always set headers (cors middleware might not set them in all cases)
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
+        }
     }
     
     next();
@@ -349,9 +354,15 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
     // ✅ CORS FIX: Ensure CORS headers are sent even on errors
     const origin = req.headers.origin;
-    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // ✅ CRITICAL FIX: Always set CORS headers for localhost origins (case-insensitive)
+    if (origin) {
+        const originLower = origin.toLowerCase();
+        if (originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
+        }
     }
     
     if (req.method === 'OPTIONS') {
@@ -785,11 +796,16 @@ app.get("/api/categories/:id", async (req, res) => {
 
 app.get("/api/restaurants", async (req, res) => {
     try {
+        console.log("=== Get Restaurants Started ===");
         const restaurants = await Restaurant.find().sort({ name: 1 });
+        console.log("Restaurants found:", restaurants.length);
         
         // Transform restaurants with full image URLs
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedRestaurants = restaurants.map(restaurant => transformRestaurantData(restaurant, baseUrl));
+        
+        console.log("Transformed restaurants:", transformedRestaurants.length);
+        console.log("=== Get Restaurants Completed ===");
         
         return res.status(200).json({
             success: true,
@@ -798,9 +814,11 @@ app.get("/api/restaurants", async (req, res) => {
         });
     } catch (err) {
         console.error("Get Restaurants Error:", err);
+        console.error("Error stack:", err.stack);
         return res.status(500).json({
             success: false,
-            message: "Server error"
+            message: "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 });
@@ -836,7 +854,24 @@ app.get("/api/restaurants/:id", async (req, res) => {
 
 app.get("/api/products", async (req, res) => {
     try {
-        const { category } = req.query;
+        // 🔍 BURP SUITE TESTING: Log detailed request information
+        console.log('\n🔍 GET PRODUCTS REQUEST INTERCEPTED (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('📍 Method:', req.method);
+        console.log('📍 Endpoint:', req.originalUrl);
+        console.log('📍 Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        console.log('🌐 Origin:', req.headers.origin || 'N/A');
+        console.log('🌐 Referer:', req.headers.referer || 'N/A');
+        console.log('👤 User Agent:', req.headers['user-agent'] || 'N/A');
+        console.log('🎫 Authorization Header:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
+        console.log('🔑 Content-Type:', req.headers['content-type'] || 'N/A');
+        console.log('📋 Accept:', req.headers.accept || 'N/A');
+        console.log('🌍 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
+        console.log('🕐 Timestamp:', new Date().toISOString());
+        console.log('📝 Query Parameters:', JSON.stringify(req.query, null, 2));
+        console.log('═══════════════════════════════════════════════════════════════\n');
+        
+        const { category, page = 1, limit = 12, search, sortBy, sortOrder } = req.query;
         let filter = {};
         if (category) {
             filter.categoryId = category;
@@ -850,6 +885,30 @@ app.get("/api/products", async (req, res) => {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedProducts = products.map(product => transformProductData(product, baseUrl));
         
+        // 🔍 BURP SUITE TESTING: Log detailed response information
+        console.log('\n✅ GET PRODUCTS RESPONSE SENT (BURP SUITE):');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('📦 Total Products Found:', transformedProducts.length);
+        console.log('📋 Filters Applied:', JSON.stringify(filter, null, 2));
+        console.log('📋 Query Parameters:', JSON.stringify(req.query, null, 2));
+        if (transformedProducts.length > 0) {
+            console.log('📦 Products Details:');
+            transformedProducts.forEach((product, index) => {
+                console.log(`   Product ${index + 1}:`);
+                console.log(`      ID: ${product._id || 'N/A'}`);
+                console.log(`      Name: ${product.name || 'N/A'}`);
+                console.log(`      Price: ${product.price || 0} NPR`);
+                console.log(`      Type: ${product.type || 'N/A'}`);
+                console.log(`      Category: ${product.categoryName || 'N/A'}`);
+                console.log(`      Restaurant: ${product.restaurantName || 'N/A'}`);
+                console.log(`      Location: ${product.restaurantLocation || 'N/A'}`);
+                console.log(`      Available: ${product.isAvailable !== false ? 'Yes' : 'No'}`);
+                console.log(`      Image URL: ${product.image || 'N/A'}`);
+            });
+        }
+        console.log('🕐 Response Timestamp:', new Date().toISOString());
+        console.log('═══════════════════════════════════════════════════════════════\n');
+        
         return res.status(200).json({
             success: true,
             message: "Products fetched successfully",
@@ -857,9 +916,11 @@ app.get("/api/products", async (req, res) => {
         });
     } catch (err) {
         console.error("Get Products Error:", err);
+        console.error("Error stack:", err.stack);
         return res.status(500).json({
             success: false,
-            message: "Server error"
+            message: "Server error",
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 });

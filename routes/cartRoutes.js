@@ -15,6 +15,9 @@ router.get("/test", optionalAuthGuard, cartController.testAuth);
 // Get user's cart (optional auth for guest users)
 router.get("/", optionalAuthGuard, cartController.getCart);
 
+// POST endpoint for cart details (Burp Suite testing - shows all details in request/response)
+router.post("/details", optionalAuthGuard, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, cartController.getCartDetails);
+
 // Add item to cart (optional auth for guest users)
 // ✅ SECURITY: securityValidation detects malicious payloads (XSS, SQL injection, etc.)
 router.post("/add", optionalAuthGuard, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, cartController.addToCart);

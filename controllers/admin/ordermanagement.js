@@ -171,7 +171,11 @@ exports.rejectOrder = async (req, res) => {
 
 exports.getOrderById = async (req, res) => {
     try {
-        const order = await Order.findById(req.params.id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() and populate for faster response
+        const order = await Order.findById(req.params.id)
+            .populate('userId', 'username email fullname phone address')
+            .populate('items.productId', 'name price filepath')
+            .lean();
         if (!order) {
             return res.status(404).json({
                 success: false,
@@ -184,6 +188,7 @@ exports.getOrderById = async (req, res) => {
             data: order
         });
     } catch (err) {
+        console.error("Get Order by ID Error:", err);
         return res.status(500).json({
             success: false,
             message: "Server error"

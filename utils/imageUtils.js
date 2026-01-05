@@ -57,28 +57,45 @@ const transformProductData = (product, baseUrl) => {
 const transformCategoryData = (category, baseUrl) => {
     const cat = category.toObject ? category.toObject() : category;
     
+    // Construct image URL from filepath
+    const imageUrl = constructImageUrl(cat.filepath, baseUrl);
+    
     return {
         _id: cat._id,
         name: cat.name,
-        image: constructImageUrl(cat.filepath, baseUrl)
+        filepath: cat.filepath || null,
+        image: imageUrl, // Always set image field (even if null)
+        // Include all other fields
+        ...cat,
+        image: imageUrl // Override image field after spread to ensure it's always set correctly
     };
 };
 
 /**
- * Transforms restaurant data to include full image URL
+ * Transforms restaurant data to include full image URL and all fields
  * @param {Object} restaurant - The restaurant object from database
  * @param {string} baseUrl - The base URL
- * @returns {Object} - Transformed restaurant with full image URL
+ * @returns {Object} - Transformed restaurant with full image URL and all fields
  */
 const transformRestaurantData = (restaurant, baseUrl) => {
     const rest = restaurant.toObject ? restaurant.toObject() : restaurant;
     
+    // Construct image URL from filepath
+    const imageUrl = constructImageUrl(rest.filepath, baseUrl);
+    
     return {
         _id: rest._id,
-        name: rest.name,
-        location: rest.location,
-        contact: rest.contact,
-        image: constructImageUrl(rest.filepath, baseUrl)
+        name: rest.name || 'Unknown Restaurant',
+        location: rest.location || 'Location not specified',
+        contact: rest.contact || 'Contact not available',
+        description: rest.description || 'No description available',
+        rating: rest.rating || 4.5,
+        status: rest.status || 'Open',
+        filepath: rest.filepath || null,
+        image: imageUrl, // Always set image field (even if null)
+        // Include all other fields, but ensure image is not overwritten
+        ...rest,
+        image: imageUrl // Override image field after spread to ensure it's always set correctly
     };
 };
 

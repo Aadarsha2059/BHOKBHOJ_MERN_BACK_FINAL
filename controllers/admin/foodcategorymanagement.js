@@ -37,8 +37,23 @@ exports.getAllCategories = async (req, res) => {
             .select('name filepath createdAt updatedAt')
             .lean()
             .sort({ name: 1 });
-        console.log('Retrieved categories:', categories.map(cat => ({ name: cat.name, filepath: cat.filepath })));
-        return res.json({ success: true, data: categories, message: "All category" });
+        // Transform categories with full image URLs
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const transformedCategories = categories.map(category => {
+            const transformed = transformCategoryData(category, baseUrl);
+            // Ensure filepath is included for frontend compatibility
+            return {
+                ...transformed,
+                filepath: category.filepath || null
+            };
+        });
+        
+        console.log('Retrieved categories:', transformedCategories.map(cat => ({ 
+            name: cat.name, 
+            filepath: cat.filepath,
+            image: cat.image 
+        })));
+        return res.json({ success: true, data: transformedCategories, message: "All category" });
     } catch (err) {
         console.error('Error getting categories:', err);
         return res.status(500).json({ success: false, message: "Server Error" });
@@ -48,10 +63,15 @@ exports.getAllCategories = async (req, res) => {
 // Get single category by ID
 exports.getCategoryById = async (req, res) => {
     try {
-        const category = await Category.findById(req.params.id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
+        const category = await Category.findById(req.params.id).lean();
         if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
-        console.log('Retrieved single category:', { name: category.name, filepath: category.filepath });
-        return res.json({ success: true, data: category, message: "One category" });
+        
+        // Transform category with full image URL
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const transformedCategory = transformCategoryData(category, baseUrl);
+        
+        return res.json({ success: true, data: transformedCategory, message: "One category" });
     } catch (err) {
         console.error('Error getting category by ID:', err);
         return res.status(500).json({ success: false, message: "Server Error" });
@@ -64,8 +84,8 @@ exports.updateCategory = async (req, res) => {
         const filename = req.file?.path
         console.log('Updating category with filepath:', filename);
         
-        // Fetch the existing category
-        const existingCategory = await Category.findById(req.params.id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only check
+        const existingCategory = await Category.findById(req.params.id).select('filepath').lean();
         if (!existingCategory) return res.status(404).json({ success: false, message: 'Category not found' });
 
         // Enforce image presence: either a new image is uploaded, or the category already has an image
@@ -82,14 +102,19 @@ exports.updateCategory = async (req, res) => {
         if (filename) {
             data.filepath = filename
         }
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for faster response
         const category = await Category.findByIdAndUpdate(
             req.params.id,
             data,
             { new: true }
-        );
+        ).lean();
         if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
-        console.log('Category updated successfully:', category);
-        return res.json({ success: true, data: category, message: "Updated" });
+        
+        // Transform category with full image URL
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const transformedCategory = transformCategoryData(category, baseUrl);
+        
+        return res.json({ success: true, data: transformedCategory, message: "Updated" });
     } catch (err) {
         console.error('Error updating category:', err);
         return res.status(500).json({ error: "Server Error" });
@@ -164,7 +189,8 @@ exports.getCategories = async (req, res) => {
 
 exports.getOneCategory = async (req, res) => {
     try {
-        const category = await Category.findById(req.params.id);
+        // ✅ PERFORMANCE OPTIMIZED: Use lean() for read-only query
+        const category = await Category.findById(req.params.id).lean();
         if (!category) {
             return res.status(404).json({
                 success: false,
