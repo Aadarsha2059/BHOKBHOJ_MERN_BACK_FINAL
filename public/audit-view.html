@@ -242,7 +242,8 @@
         async function loadLogs() {
             try {
                 // Get logs directly from database via API (no auth needed for this view)
-                const response = await fetch('/api/admin/audit?page=1&limit=100');
+                const apiUrl = window.location.origin;
+                const response = await fetch(`${apiUrl}/api/admin/audit?page=1&limit=100`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -329,7 +330,8 @@
         
         async function loadFilteredLogs(filterType) {
             try {
-                let url = '/api/admin/audit?page=1&limit=100';
+                const apiUrl = window.location.origin;
+                let url = `${apiUrl}/api/admin/audit?page=1&limit=100`;
                 
                 if (filterType === 'failures') {
                     url += '&action=LOGIN&status=FAILURE';

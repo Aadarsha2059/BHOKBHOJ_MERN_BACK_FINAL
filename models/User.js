@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { encrypt, decrypt } = require("../utils/aesEncryption");
 
 const UserSchema = new mongoose.Schema(
   {
@@ -17,18 +18,66 @@ const UserSchema = new mongoose.Schema(
       unique: false,  // ✅ Allow duplicate emails for testing
       lowercase: true,
       trim: true,
+      set: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          return encrypt(String(value).toLowerCase().trim());
+        }
+        return String(value).toLowerCase().trim();
+      },
+      get: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          try {
+            return decrypt(value);
+          } catch (e) {
+            return value;
+          }
+        }
+        return value;
+      }
     },
     password: {
       type: String,
       required: true,
     },
     phone: {
-      type: Number,
+      type: String,
       required: true,
+      set: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          return encrypt(String(value));
+        }
+        return String(value);
+      },
+      get: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          try {
+            return decrypt(value);
+          } catch (e) {
+            return value;
+          }
+        }
+        return value;
+      }
     },
     address: {
       type: String,
       required: true,
+      set: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          return encrypt(String(value));
+        }
+        return String(value);
+      },
+      get: function(value) {
+        if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+          try {
+            return decrypt(value);
+          } catch (e) {
+            return value;
+          }
+        }
+        return value;
+      }
     },
     favorites: [{
       type: mongoose.Schema.Types.ObjectId,
@@ -62,7 +111,7 @@ const UserSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'restaurant', 'admin'],
       default: 'user'
     },
     // ✅ SECURED: Login attempt tracking for brute force protection
@@ -77,6 +126,8 @@ const UserSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
   }
 );
 

@@ -1,4 +1,6 @@
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 const getClientIdentifier = (req) => {
@@ -70,3 +72,4 @@ module.exports = {
     apiLimiter,
     strictLimiter
 };
+

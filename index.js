@@ -60,6 +60,7 @@ require('./passport')(passport);
 
 // Import security middleware
 const { securityHeaders, forceHTTPS, corsOptions } = require('./middlewares/securityHeaders');
+const { generalLimiter, authLimiter, apiLimiter, strictLimiter } = require('./middlewares/rateLimiter');
 
 const app=express() 
 
@@ -400,6 +401,7 @@ app.use("/uploads", (req, res, next) => {
   next();
 }, express.static(path.join(__dirname,"uploads")));
 
+// Serve static files from public directory (must be before routes)
 app.use(express.static(path.join(__dirname,"public")))
 
 // ✅ SECURED: Session configuration with MongoDB store
@@ -411,7 +413,7 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-        mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/mithobites',
+        mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/bhokbhoj',
         collectionName: 'sessions',
         ttl: 15 * 60 // 15 minutes in seconds
     }),
@@ -431,6 +433,9 @@ app.use(session({
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Rate limiting middleware - protect against DDoS and brute force attacks
+app.use(generalLimiter);
 
 // Audit middleware - logs all requests
 app.use(auditMiddleware)
@@ -1029,6 +1034,19 @@ app.get("/api/transactions/:id", async (req, res) => {
     }
 });
 
+// Explicit route for audit-view.html (works for both HTTP and HTTPS)
+// Placed before root route to ensure it's caught
+app.get('/audit-view.html', (req, res) => {
+    const filePath = path.join(__dirname, 'public', 'audit-view.html');
+    console.log(`[${new Date().toISOString()}] Serving audit-view.html from: ${filePath}`);
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error('Error serving audit-view.html:', err);
+            res.status(404).json({ error: 'File not found', path: filePath });
+        }
+    });
+});
+
 app.get(
     "/", //root targeted
     (req,res,next ) =>{
@@ -1285,6 +1303,12 @@ app.use("/api/admin/feedback", feedbackRouteAdmin);
 app.use("/api/admin/audit", auditRouteAdmin);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/session-demo", sessionDemoRoutes);
+
+// ✅ Centralized Error Handling Middleware
+// IMPORTANT: Must be added AFTER all routes to catch errors from controllers
+// This middleware catches all errors passed via next(err) and handles them appropriately
+const errorHandler = require('./middlewares/errorMiddleware');
+app.use(errorHandler);
 
 module.exports=app
 

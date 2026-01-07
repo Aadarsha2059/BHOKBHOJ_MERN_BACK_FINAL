@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { encrypt, decrypt } = require("../utils/aesEncryption");
 
 const paymentMethodSchema = new mongoose.Schema({
     food: {
@@ -26,8 +27,44 @@ const paymentMethodSchema = new mongoose.Schema({
     },
     customerInfo: {
         name: String,
-        phone: String,
-        address: String
+        phone: {
+            type: String,
+            set: function(value) {
+                if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+                    return encrypt(String(value));
+                }
+                return String(value);
+            },
+            get: function(value) {
+                if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+                    try {
+                        return decrypt(value);
+                    } catch (e) {
+                        return value;
+                    }
+                }
+                return value;
+            }
+        },
+        address: {
+            type: String,
+            set: function(value) {
+                if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+                    return encrypt(String(value));
+                }
+                return String(value);
+            },
+            get: function(value) {
+                if (value && process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
+                    try {
+                        return decrypt(value);
+                    } catch (e) {
+                        return value;
+                    }
+                }
+                return value;
+            }
+        }
     },
     orderId: {
         type: String,
@@ -35,7 +72,9 @@ const paymentMethodSchema = new mongoose.Schema({
         sparse: true  // Allows multiple null values but ensures uniqueness for non-null values
     }
 }, {
-    timestamps: true // This adds createdAt and updatedAt fields automatically
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
 });
 
 module.exports = mongoose.model("PaymentMethod", paymentMethodSchema); 

@@ -1,4 +1,8 @@
+const express = require('express');
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
+const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 
 const getClientIdentifier = (req) => {
@@ -64,9 +68,57 @@ const strictLimiter = rateLimit({
     keyGenerator: getClientIdentifier
 });
 
-module.exports = {
-    generalLimiter,
-    authLimiter,
-    apiLimiter,
-    strictLimiter
-};
+app.use(generalLimiter);
+app.use(express.json());
+
+app.post('/api/auth/login', authLimiter, (req, res) => {
+    res.json({ 
+        success: true,
+        message: 'Login successful', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+app.post('/api/auth/register', authLimiter, (req, res) => {
+    res.json({ 
+        success: true,
+        message: 'Registration successful', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+app.get('/api/products', apiLimiter, (req, res) => {
+    res.json({ 
+        success: true,
+        data: [],
+        message: 'Products fetched successfully',
+        timestamp: new Date().toISOString() 
+    });
+});
+
+app.post('/api/orders', apiLimiter, (req, res) => {
+    res.json({ 
+        success: true,
+        message: 'Order created successfully', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+app.post('/api/payment', strictLimiter, (req, res) => {
+    res.json({ 
+        success: true,
+        message: 'Payment processed successfully', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'healthy', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT);
+

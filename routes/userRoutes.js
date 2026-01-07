@@ -3,7 +3,7 @@
 
 const express = require("express");
 const router = express.Router();
-const { registerUser, loginUser, verifyOTP, updateUser, sendResetLink, resetPassword, getCurrentUser, changePassword } = require("../controllers/userController");
+const { registerUser, loginUser, verifyOTP, updateUser, updateUserProfile, sendResetLink, resetPassword, getCurrentUser, changePassword } = require("../controllers/userController");
 const validateUser = require("../middlewares/validateUser");
 const { authenticateUser } = require("../middlewares/authorizedUser");
 const passport = require('passport');
@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS, csrfProtection, validateJWT } = require("../middlewares/securityMiddleware");
 // ✅ WHITE BOX TESTING: Import new security validation and rate limiting
 const securityValidation = require("../middlewares/securityValidation");
-const rateLimiter = require("../middlewares/rateLimiter");
+const { authLimiter } = require("../middlewares/rateLimiter");
 
 // ==========================================
 // SECURITY MIDDLEWARE APPLICATION
@@ -20,15 +20,15 @@ const rateLimiter = require("../middlewares/rateLimiter");
 
 // Register new user with validation and security
 // ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
-router.post("/register", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateUser, registerUser);
+router.post("/register", authLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateUser, registerUser);
 
 // Login user with security (Step 1: Send OTP)
 // ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
-router.post("/login", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, loginUser);
+router.post("/login", authLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, loginUser);
 
 // Verify OTP and complete login (Step 2)
 // ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
-router.post("/verify-otp", rateLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, verifyOTP);
+router.post("/verify-otp", authLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, verifyOTP);
 
 // Get current user (protected route)
 router.get("/me", authenticateUser, getCurrentUser);
@@ -37,6 +37,12 @@ router.get("/me", authenticateUser, getCurrentUser);
 // ✅ IDOR FIX: Removed :id parameter - uses JWT token to identify user
 // ✅ SECURITY: securityValidation detects malicious payloads in profile fields
 router.put("/update", authenticateUser, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUser);
+
+// Update user profile (Secure - Security by Design)
+// ✅ SECURITY BY DESIGN: Uses req.user from JWT, prevents IDOR attacks
+// ✅ SECURITY BY DESIGN: Explicitly blocks role and isAdmin field updates
+// ✅ SECURITY: securityValidation detects malicious payloads in profile fields
+router.put("/update-profile", authenticateUser, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, updateUserProfile);
 
 // Forgot password - send reset link with security
 router.post("/forgot-password", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, sendResetLink);

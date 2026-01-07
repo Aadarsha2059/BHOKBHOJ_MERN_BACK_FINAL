@@ -1,4 +1,9 @@
+const express = require('express');
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
+const app = express();
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 const getClientIdentifier = (req) => {
@@ -18,10 +23,7 @@ const generalLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: getClientIdentifier,
-    skip: (req) => {
-        return req.path.startsWith('/uploads') || req.path.startsWith('/api/health');
-    }
+    keyGenerator: getClientIdentifier
 });
 
 const authLimiter = rateLimit({
@@ -38,35 +40,18 @@ const authLimiter = rateLimit({
     skipSuccessfulRequests: true
 });
 
-const apiLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: isProduction ? 60 : 200,
-    message: {
-        success: false,
-        message: 'API rate limit exceeded, please try again later.',
-        retryAfter: '1 minute'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: getClientIdentifier
+app.use(generalLimiter);
+
+app.use(express.json());
+
+app.post('/api/login', authLimiter, (req, res) => {
+    res.json({ message: 'Login successful', timestamp: new Date().toISOString() });
 });
 
-const strictLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 10,
-    message: {
-        success: false,
-        message: 'Too many requests, please slow down.',
-        retryAfter: '1 minute'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: getClientIdentifier
+app.get('/api/data', (req, res) => {
+    res.json({ message: 'Data endpoint' });
 });
 
-module.exports = {
-    generalLimiter,
-    authLimiter,
-    apiLimiter,
-    strictLimiter
-};
+const PORT = process.env.PORT || 3000;
+app.listen(PORT);
+

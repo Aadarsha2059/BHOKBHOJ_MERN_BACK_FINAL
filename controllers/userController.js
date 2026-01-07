@@ -1197,6 +1197,223 @@ exports.updateUser = async (req, res) => {
   }
 };
 
+/**
+ * Secure Update User Profile Controller
+ * ✅ SECURITY BY DESIGN: Implements strict security principles to prevent IDOR attacks
+ * 
+ * Security Features:
+ * 1. Uses req.user (from JWT) - NEVER accepts userId from req.params or req.body
+ * 2. Explicitly prevents updating 'role' and 'isAdmin' fields (protected from client tampering)
+ * 3. Only allows updating safe, user-editable fields
+ * 4. Validates all inputs before processing
+ */
+exports.updateUserProfile = async (req, res) => {
+  try {
+    // ✅ SECURITY BY DESIGN: Verify authentication first
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Please login first."
+      });
+    }
+
+    // ✅ SECURITY BY DESIGN: Get user ID ONLY from JWT token (req.user)
+    // NEVER trust userId from req.params or req.body - prevents IDOR attacks
+    const userId = req.user._id;
+
+    // ✅ SECURITY BY DESIGN: Define allowed fields that users can update
+    // Explicitly whitelist safe fields - prevents mass assignment attacks
+    const allowedFields = ['fullname', 'username', 'email', 'phone', 'address'];
+    
+    // Extract only allowed fields from request body
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    }
+
+    // ✅ SECURITY BY DESIGN: Explicitly remove protected fields if present
+    // Even if attacker tries to send 'role' or 'isAdmin' in request, we ignore them
+    const protectedFields = ['role', 'isAdmin', '_id', 'password', 'loginAttempts', 'accountLockedUntil', 'otp', 'otpExpiry', 'otpVerified', 'googleId', 'facebookId', 'provider', 'favorites'];
+    
+    // Log security warning if protected fields are attempted
+    const attemptedProtectedFields = protectedFields.filter(field => req.body[field] !== undefined);
+    if (attemptedProtectedFields.length > 0) {
+      console.warn('\n🚨 SECURITY WARNING: Attempted to update protected fields');
+      console.warn('═══════════════════════════════════════');
+      console.warn('👤 User ID:', userId);
+      console.warn('👤 Username:', req.user.username);
+      console.warn('🔒 Protected fields attempted:', attemptedProtectedFields.join(', '));
+      console.warn('🌐 IP Address:', req.ip || req.connection.remoteAddress);
+      console.warn('🕐 Timestamp:', new Date().toISOString());
+      console.warn('═══════════════════════════════════════\n');
+    }
+
+    // Check if there's anything to update
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields provided for update. Allowed fields: " + allowedFields.join(', ')
+      });
+    }
+
+    // Find the authenticated user from database
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // ✅ SECURITY BY DESIGN: Handle email update with additional security
+    if (updateData.email && updateData.email !== user.email) {
+      // Email change requires current password verification
+      const { currentPassword } = req.body;
+      if (!currentPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is required to change email address."
+        });
+      }
+
+      // Verify current password
+      const passwordCheck = await bcrypt.compare(currentPassword, user.password);
+      if (!passwordCheck) {
+        return res.status(403).json({
+          success: false,
+          message: "Current password is incorrect. Email update denied."
+        });
+      }
+
+      // Check if new email already exists for another user
+      const existingUserByEmail = await User.findOne({
+        email: updateData.email,
+        _id: { $ne: userId }
+      });
+      if (existingUserByEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email address is already in use by another account."
+        });
+      }
+    }
+
+    // ✅ SECURITY BY DESIGN: Handle username update with uniqueness check
+    if (updateData.username && updateData.username !== user.username) {
+      const existingUserByUsername = await User.findOne({
+        username: updateData.username,
+        _id: { $ne: userId }
+      });
+      if (existingUserByUsername) {
+        return res.status(400).json({
+          success: false,
+          message: "Username is already taken. Please choose a different username."
+        });
+      }
+    }
+
+    // ✅ SECURITY BY DESIGN: Update only the authenticated user's profile
+    // Use findByIdAndUpdate with explicit field filtering
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      {
+        new: true,
+        runValidators: true, // Run schema validators
+        select: '-password -otp -otpExpiry -loginAttempts -accountLockedUntil' // Exclude sensitive fields
+      }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found or update failed"
+      });
+    }
+
+    // ✅ SECURITY BY DESIGN: Verify that protected fields were NOT changed
+    // Double-check that role remains unchanged (defense in depth)
+    if (updatedUser.role !== user.role) {
+      console.error('\n🚨 CRITICAL SECURITY ALERT: Role field was modified!');
+      console.error('Original role:', user.role);
+      console.error('New role:', updatedUser.role);
+      console.error('User ID:', userId);
+      console.error('IP Address:', req.ip || req.connection.remoteAddress);
+      // Revert the change
+      await User.findByIdAndUpdate(userId, { role: user.role });
+      // Re-fetch user with correct role
+      const revertedUser = await User.findById(userId).select('-password -otp -otpExpiry -loginAttempts -accountLockedUntil');
+      return res.status(200).json({
+        success: true,
+        message: "Profile updated successfully (protected fields were ignored)",
+        data: {
+          _id: revertedUser._id,
+          fullname: revertedUser.fullname,
+          username: revertedUser.username,
+          email: revertedUser.email,
+          phone: revertedUser.phone,
+          address: revertedUser.address,
+          role: revertedUser.role,
+          createdAt: revertedUser.createdAt,
+          updatedAt: revertedUser.updatedAt
+        }
+      });
+    }
+
+    // Return updated user data (without sensitive fields)
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        _id: updatedUser._id,
+        fullname: updatedUser.fullname,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        address: updatedUser.address,
+        role: updatedUser.role, // Include role in response but it cannot be modified
+        createdAt: updatedUser.createdAt,
+        updatedAt: updatedUser.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('\n❌ UPDATE USER PROFILE ERROR:');
+    console.error('═══════════════════════════════════════');
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    console.error('User ID:', req.user ? req.user._id : 'Not authenticated');
+    console.error('Request Body:', JSON.stringify(req.body, null, 2));
+    console.error('═══════════════════════════════════════\n');
+
+    // Handle specific MongoDB errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: errors
+      });
+    }
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field} already exists`
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating profile",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 // Forgot Password - Send Reset Link
 exports.sendResetLink = async (req, res) => {
   const { email } = req.body;

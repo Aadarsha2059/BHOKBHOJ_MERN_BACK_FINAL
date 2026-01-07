@@ -1,4 +1,9 @@
+const express = require('express');
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
+const app = express();
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 const getClientIdentifier = (req) => {
@@ -64,9 +69,32 @@ const strictLimiter = rateLimit({
     keyGenerator: getClientIdentifier
 });
 
-module.exports = {
-    generalLimiter,
-    authLimiter,
-    apiLimiter,
-    strictLimiter
-};
+app.use(generalLimiter);
+app.use(express.json());
+
+app.post('/api/auth/login', authLimiter, (req, res) => {
+    res.json({ message: 'Login successful', timestamp: new Date().toISOString() });
+});
+
+app.post('/api/auth/register', authLimiter, (req, res) => {
+    res.json({ message: 'Registration successful', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/products', apiLimiter, (req, res) => {
+    res.json({ message: 'Products data', timestamp: new Date().toISOString() });
+});
+
+app.post('/api/payment', strictLimiter, (req, res) => {
+    res.json({ message: 'Payment processed', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Rate limiting enabled - Production: ${isProduction}`);
+});
+

@@ -1,9 +1,63 @@
 /**
  * Role-based Access Control Middleware
- * Protects routes that require specific user roles (admin, etc.)
+ * Protects routes that require specific user roles (admin, restaurant, user)
  */
 
 const User = require('../models/User');
+
+/**
+ * Middleware factory function to authorize routes based on user roles
+ * This function checks req.user.role after JWT authentication
+ * 
+ * @param {...string} roles - One or more allowed roles ('user', 'restaurant', 'admin')
+ * @returns {Function} Express middleware function
+ * 
+ * @example
+ * // Only admin can access
+ * router.post('/api/category', authGuard, authorizeRoles('admin'), createCategory);
+ * 
+ * @example
+ * // Restaurant and admin can access
+ * router.post('/api/product', authGuard, authorizeRoles('restaurant', 'admin'), createProduct);
+ */
+exports.authorizeRoles = (...roles) => {
+  return (req, res, next) => {
+    try {
+      // Check if user is authenticated (req.user should be set by JWT auth middleware)
+      if (!req.user || !req.user._id) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required. Please login first."
+        });
+      }
+
+      // Check if user has a role
+      if (!req.user.role) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. User role not found."
+        });
+      }
+
+      // Check if user's role is in the allowed roles list
+      if (!roles.includes(req.user.role)) {
+        return res.status(403).json({
+          success: false,
+          message: `Access denied. This route requires one of the following roles: ${roles.join(', ')}. Your role: ${req.user.role}`
+        });
+      }
+
+      // User has required role, proceed to next middleware/controller
+      next();
+    } catch (error) {
+      console.error('Role authorization error:', error);
+      return res.status(500).json({
+        success: false,
+        message: "Authorization check failed"
+      });
+    }
+  };
+};
 
 /**
  * Middleware to check if user is an admin
