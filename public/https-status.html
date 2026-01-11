@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTPS/TLS Status - BHOKBHOJ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #1e3c72;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin: 10px 5px;
+        }
+        
+        .status-badge.secure {
+            background: #22c55e;
+            color: white;
+        }
+        
+        .status-badge.insecure {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .status-badge.info {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .info-card {
+            background: #f8fafc;
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .info-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        
+        .info-card h3 {
+            color: #334155;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .info-card .value {
+            color: #1e3c72;
+            font-weight: bold;
+            font-size: 1.3em;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        
+        .info-card .label {
+            color: #64748b;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .connection-status {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .connection-status.insecure {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+        
+        .connection-status h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .protocol-display {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .certificate-info {
+            background: #fefce8;
+            border: 2px solid #fbbf24;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .certificate-info h3 {
+            color: #92400e;
+            margin-bottom: 15px;
+        }
+        
+        .cert-item {
+            background: white;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .refresh-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .refresh-btn:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .loading {
+            text-align: center;
+            color: #3b82f6;
+            font-size: 1.2em;
+            padding: 20px;
+        }
+        
+        .url-display {
+            background: #1e293b;
+            color: #22c55e;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            margin: 20px 0;
+            text-align: center;
+            word-break: break-all;
+        }
+        
+        .icon-large {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon-large">🔒</div>
+            <h1>HTTPS/TLS Connection Status</h1>
+            <div class="url-display" id="currentUrl"></div>
+        </div>
+        
+        <div id="connectionStatus" class="connection-status">
+            <div class="loading">🔍 Checking connection security...</div>
+        </div>
+        
+        <div id="tlsInfo" class="info-grid" style="display: none;">
+            <!-- Will be populated by JavaScript -->
+        </div>
+        
+        <div id="certificateInfo" class="certificate-info" style="display: none;">
+            <h3>📜 Certificate Information</h3>
+            <div id="certDetails"></div>
+        </div>
+        
+        <button class="refresh-btn" onclick="checkTLS()">🔄 Refresh TLS Status</button>
+    </div>
+    
+    <script>
+        // Display current URL
+        document.getElementById('currentUrl').textContent = window.location.href;
+        
+        // Check if connection is secure
+        function checkConnection() {
+            const protocol = window.location.protocol;
+            const statusDiv = document.getElementById('connectionStatus');
+            
+            if (protocol === 'https:') {
+                statusDiv.className = 'connection-status';
+                statusDiv.innerHTML = `
+                    <h2>✅ Secure HTTPS Connection</h2>
+                    <div class="protocol-display">HTTPS</div>
+                    <p>Your connection is encrypted and secure</p>
+                    <span class="status-badge secure">ENCRYPTED</span>
+                    <span class="status-badge info">TLS ACTIVE</span>
+                `;
+            } else {
+                statusDiv.className = 'connection-status insecure';
+                statusDiv.innerHTML = `
+                    <h2>⚠️ Insecure HTTP Connection</h2>
+                    <div class="protocol-display">HTTP</div>
+                    <p>Your connection is NOT encrypted</p>
+                    <span class="status-badge insecure">NOT SECURE</span>
+                    <p style="margin-top: 15px;">⚠️ Switch to HTTPS for secure communication</p>
+                `;
+            }
+        }
+        
+        // Fetch REAL TLS information from server
+        async function checkTLS() {
+            try {
+                const response = await fetch('/api/tls-info');
+                const data = await response.json();
+                
+                displayTLSInfo(data);
+                displayCertificateInfo(data);
+            } catch (error) {
+                console.error('Error fetching TLS info:', error);
+                document.getElementById('tlsInfo').innerHTML = `
+                    <div class="info-card" style="grid-column: 1 / -1;">
+                        <h3>❌ Error</h3>
+                        <p class="value">Failed to fetch TLS information</p>
+                        <p class="label">Make sure the server is running and accessible via HTTPS</p>
+                    </div>
+                `;
+                document.getElementById('tlsInfo').style.display = 'grid';
+            }
+        }
+        
+        // Display REAL TLS information
+        function displayTLSInfo(data) {
+            const tlsInfoDiv = document.getElementById('tlsInfo');
+            tlsInfoDiv.style.display = 'grid';
+            
+            const isSecure = data.connection.encrypted;
+            const protocol = data.connection.protocol || 'N/A';
+            const cipher = data.connection.cipher?.name || 'N/A';
+            const hasPFS = data.connection.perfectForwardSecrecy;
+            
+            tlsInfoDiv.innerHTML = `
+                <div class="info-card">
+                    <h3>🔒 Encryption Status</h3>
+                    <div class="value">${isSecure ? 'YES ✅' : 'NO ❌'}</div>
+                    <div class="label">Connection is ${isSecure ? 'encrypted' : 'not encrypted'}</div>
+                    <span class="status-badge ${isSecure ? 'secure' : 'insecure'}" style="margin-top: 10px; display: block; text-align: center;">
+                        ${isSecure ? 'ENCRYPTED' : 'NOT ENCRYPTED'}
+                    </span>
+                </div>
+                
+                <div class="info-card">
+                    <h3>🛡️ TLS Protocol</h3>
+                    <div class="value">${protocol}</div>
+                    <div class="label">Current TLS version in use</div>
+                    <div class="label" style="margin-top: 10px;">
+                        Supported: ${data.server.minTlsVersion} - ${data.server.maxTlsVersion}
+                    </div>
+                    ${protocol === 'TLSv1.3' ? '<span class="status-badge secure" style="margin-top: 10px; display: block; text-align: center;">LATEST VERSION</span>' : ''}
+                </div>
+                
+                <div class="info-card">
+                    <h3>🔐 Cipher Suite</h3>
+                    <div class="value" style="font-size: 1em;">${cipher}</div>
+                    <div class="label">Encryption algorithm in use</div>
+                    ${hasPFS ? '<span class="status-badge info" style="margin-top: 10px; display: block; text-align: center;">PERFECT FORWARD SECRECY</span>' : ''}
+                </div>
+                
+                <div class="info-card">
+                    <h3>🌐 Connection Details</h3>
+                    <div class="label">Protocol: <span class="value" style="font-size: 1em;">${data.request.protocol}</span></div>
+                    <div class="label">Secure: <span class="value" style="font-size: 1em;">${data.request.secure ? 'Yes' : 'No'}</span></div>
+                    <div class="label">Hostname: <span class="value" style="font-size: 1em;">${data.request.hostname}</span></div>
+                    <div class="label">IP: <span class="value" style="font-size: 1em;">${data.request.ip || 'N/A'}</span></div>
+                </div>
+                
+                <div class="info-card">
+                    <h3>✅ Security Verification</h3>
+                    <div class="label">TLS 1.2+: ${data.verification.isTLS12OrHigher ? '✅ Yes' : '❌ No'}</div>
+                    <div class="label">TLS 1.3: ${data.verification.isTLS13 ? '✅ Yes' : '❌ No'}</div>
+                    <div class="label">Strong Cipher: ${data.verification.hasStrongCipher ? '✅ Yes' : '❌ No'}</div>
+                    <div class="value" style="margin-top: 15px; font-size: 0.9em; color: ${isSecure ? '#22c55e' : '#ef4444'};">
+                        ${data.verification.recommendation}
+                    </div>
+                </div>
+                
+                <div class="info-card">
+                    <h3>⏱️ Timestamp</h3>
+                    <div class="value" style="font-size: 1em;">${new Date(data.timestamp).toLocaleString()}</div>
+                    <div class="label">Last checked</div>
+                </div>
+            `;
+        }
+        
+        // Display certificate information
+        function displayCertificateInfo(data) {
+            const certInfo = data.connection.certificate;
+            const certDiv = document.getElementById('certificateInfo');
+            const certDetails = document.getElementById('certDetails');
+            
+            if (certInfo && data.connection.encrypted) {
+                certDiv.style.display = 'block';
+                certDetails.innerHTML = `
+                    <div class="cert-item"><strong>Subject:</strong> ${JSON.stringify(certInfo.subject || 'N/A')}</div>
+                    <div class="cert-item"><strong>Issuer:</strong> ${JSON.stringify(certInfo.issuer || 'N/A')}</div>
+                    <div class="cert-item"><strong>Valid From:</strong> ${certInfo.validFrom || 'N/A'}</div>
+                    <div class="cert-item"><strong>Valid To:</strong> ${certInfo.validTo || 'N/A'}</div>
+                    <div class="cert-item"><strong>Key Size:</strong> ${certInfo.keySize || 'N/A'} bits</div>
+                    <div class="cert-item"><strong>Signature Algorithm:</strong> ${certInfo.signatureAlgorithm || 'N/A'}</div>
+                    <div class="cert-item"><strong>Serial Number:</strong> ${certInfo.serialNumber || 'N/A'}</div>
+                `;
+            } else {
+                certDiv.style.display = 'none';
+            }
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            checkConnection();
+            checkTLS();
+        };
+    </script>
+</body>
+</html>

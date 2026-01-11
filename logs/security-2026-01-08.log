@@ -1,0 +1,5 @@
+{"ip":"127.0.0.1","level":"error","message":"POST /api/auth/login","responseTime":478,"service":"bhokbhoj-api","statusCode":403,"timestamp":"2026-01-08 12:34:20","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/feedbacks","responseTime":45,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-08 12:41:39","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/feedbacks","responseTime":34,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-08 12:44:33","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/feedbacks","responseTime":26,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-08 13:16:01","userId":null}
+{"ip":"127.0.0.1","level":"error","message":"POST /api/feedbacks","responseTime":19,"service":"bhokbhoj-api","statusCode":400,"timestamp":"2026-01-08 13:17:46","userId":null}

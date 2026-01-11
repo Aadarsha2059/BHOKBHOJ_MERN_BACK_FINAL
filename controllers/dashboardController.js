@@ -21,7 +21,12 @@ exports.getLatestAdditions = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 };
 
@@ -58,7 +63,12 @@ exports.getBusinessMetrics = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 };
 
@@ -72,7 +82,12 @@ exports.debugBusinessTrends = async (req, res) => {
       payments
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Debug error', error: err.message });
+    // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Debug error', 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 };
 
@@ -224,7 +239,12 @@ exports.getBusinessTrends = async (req, res) => {
     });
   } catch (err) {
     console.error('BusinessTrends endpoint error:', err);
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 };
 
@@ -233,6 +253,11 @@ exports.markAllOrdersPaid = async (req, res) => {
     const result = await Order.updateMany({}, { $set: { paymentStatus: 'paid' } });
     res.json({ success: true, message: 'All orders marked as paid', result });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to update orders', error: err.message });
+    // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update orders', 
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 }; 

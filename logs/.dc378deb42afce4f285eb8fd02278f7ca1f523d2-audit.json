@@ -1,0 +1,20 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 90
+    },
+    "auditLog": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\.dc378deb42afce4f285eb8fd02278f7ca1f523d2-audit.json",
+    "files": [
+        {
+            "date": 1768104462593,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\security-2026-01-11.log",
+            "hash": "71517e9fdd0ca43d8e42eb719d201a60a0cd519cd948b1a9272bb2c2d2bed57e"
+        },
+        {
+            "date": 1768155302021,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\security-2026-01-12.log",
+            "hash": "16997d53c80f74c558b2fe82ab20a377151a3a90939b205247dcfd6c9979bd0a"
+        }
+    ],
+    "hashType": "sha256"
+}

@@ -115,8 +115,19 @@ const sanitizeMiddleware = (req, res, next) => {
     if (req.body) {
         req.body = sanitizeInput(req.body);
     }
-    if (req.query) {
-        req.query = sanitizeInput(req.query);
+    // ✅ FIX: Cannot directly assign to req.query (it's a getter-only property)
+    // Wrap all operations in try-catch to handle read-only properties
+    if (req.query && Object.keys(req.query).length > 0) {
+        const sanitizedQuery = sanitizeInput(req.query);
+        // Update query parameters individually
+        Object.keys(sanitizedQuery).forEach(key => {
+            try {
+                req.query[key] = sanitizedQuery[key];
+            } catch (e) {
+                // If modification fails (read-only property), ignore silently
+                // The query parameter will remain unchanged, but the request will still proceed
+            }
+        });
     }
     if (req.params) {
         req.params = sanitizeInput(req.params);

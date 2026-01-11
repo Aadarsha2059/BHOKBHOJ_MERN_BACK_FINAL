@@ -7,9 +7,12 @@
  * - Development: Returns full error details for debugging
  * 
  * Usage:
- * 1. In controllers, pass errors to next(): next(err)
+ * 1. In controllers, use AppError or throw errors and pass to next(): next(err)
  * 2. Add this middleware AFTER all routes: app.use(errorHandler)
  */
+
+const AppError = require('../utils/AppError');
+const { sanitizeError, logError, isOperationalError } = require('../utils/errorUtils');
 
 /**
  * Centralized error handler middleware
@@ -21,89 +24,32 @@
  * @param {Function} next - Express next function
  */
 const errorHandler = (err, req, res, next) => {
-  // Log error details (always log for server-side debugging)
-  console.error('\n❌ ERROR HANDLED BY MIDDLEWARE:');
-  console.error('═══════════════════════════════════════');
-  console.error('📍 Path:', req.method, req.originalUrl);
-  console.error('🌐 Origin:', req.headers.origin || 'N/A');
-  console.error('👤 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
-  console.error('🕐 Timestamp:', new Date().toISOString());
-  console.error('📝 Error Message:', err.message || 'Unknown error');
-  console.error('📚 Error Name:', err.name || 'Error');
-  if (process.env.NODE_ENV === 'development') {
-    console.error('📋 Stack Trace:', err.stack);
-  }
-  console.error('═══════════════════════════════════════\n');
+  // Log error with context for debugging (always log on server side)
+  logError(err, req);
 
-  // Determine if we're in production mode
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Sanitize error based on environment and error type
+  const sanitizedError = sanitizeError(err);
 
-  // Default error status code
-  let statusCode = err.statusCode || err.status || 500;
+  // Get status code from sanitized error
+  const statusCode = sanitizedError.statusCode || 500;
 
-  // Default error message
-  let message = err.message || 'Internal Server Error';
-
-  // Handle specific error types
-  if (err.name === 'ValidationError') {
-    // Mongoose validation error
-    statusCode = 400;
-    message = 'Validation Error';
-    if (!isProduction) {
-      // In development, include validation details
-      const errors = Object.values(err.errors || {}).map(e => e.message);
-      return res.status(statusCode).json({
-        success: false,
-        message: message,
-        errors: errors,
-        stack: err.stack
-      });
-    }
-  } else if (err.name === 'CastError') {
-    // Mongoose cast error (invalid ID format)
-    statusCode = 400;
-    message = 'Invalid ID format';
-  } else if (err.name === 'JsonWebTokenError') {
-    // JWT error
-    statusCode = 401;
-    message = 'Invalid token';
-  } else if (err.name === 'TokenExpiredError') {
-    // JWT expired
-    statusCode = 401;
-    message = 'Token expired';
-  } else if (err.code === 11000) {
-    // MongoDB duplicate key error
-    statusCode = 400;
-    message = 'Duplicate entry. This record already exists.';
-  } else if (err.name === 'MongoServerError') {
-    // MongoDB server error
-    statusCode = 500;
-    message = isProduction ? 'Database error occurred' : err.message;
-  }
-
-  // Prepare error response
+  // Prepare final response object
   const errorResponse = {
-    success: false,
-    message: isProduction && statusCode === 500 
-      ? 'Internal Server Error'  // Generic message in production for 500 errors
-      : message,                  // Specific message for other errors or in development
+    success: sanitizedError.success !== undefined ? sanitizedError.success : false,
+    status: sanitizedError.status || 'error',
+    message: sanitizedError.message || 'Internal server error',
+    statusCode: statusCode
   };
 
-  // Add error details in development mode only
-  if (!isProduction) {
-    errorResponse.error = {
-      name: err.name || 'Error',
-      message: err.message || 'Unknown error',
-      stack: err.stack
-    };
+  // Include field-specific errors if present
+  if (sanitizedError.errors && sanitizedError.errors.length > 0) {
+    errorResponse.errors = sanitizedError.errors;
+  }
 
-    // Add additional error properties if they exist
-    if (err.errors) {
-      errorResponse.error.errors = err.errors;
-    }
-    if (err.code) {
-      errorResponse.error.code = err.code;
-    }
+  // Include additional error details only in development mode
+  // This helps with debugging but prevents information leakage in production
+  if (process.env.NODE_ENV === 'development' && sanitizedError.error) {
+    errorResponse.error = sanitizedError.error;
   }
 
   // Send error response

@@ -61,7 +61,7 @@ exports.authorizeRoles = (...roles) => {
 
 /**
  * Middleware to check if user is an admin
- * ✅ IDOR Protection: Ensures only admins can access admin-only routes
+ *  Ensures only admins can access admin-only routes
  */
 exports.isAdmin = async (req, res, next) => {
   try {
@@ -83,8 +83,8 @@ exports.isAdmin = async (req, res, next) => {
       });
     }
 
-    // Check if user has admin privileges
-    if (!user.isAdmin) {
+    // Check if user has admin role
+    if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: "Access denied. Admin privileges required."
@@ -147,7 +147,7 @@ exports.isAdminOrOwner = (paramName = 'id') => {
 
       // Check if user is admin
       const user = await User.findById(authenticatedUserId);
-      if (user && user.isAdmin) {
+      if (user && user.role === 'admin') {
         return next();
       }
 

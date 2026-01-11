@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payload Size Limit Test - BHOKBHOJ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .info-box strong {
+            color: #667eea;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .result-box.success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+            display: block;
+        }
+        .result-box.error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            color: #991b1b;
+            display: block;
+        }
+        .result-box.info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+            display: block;
+        }
+        pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .size-info {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .size-info.small {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .size-info.large {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📏 Request Payload Size Limit Test</h1>
+        <p class="subtitle">Test the 10kb payload size limit implementation</p>
+        
+        <div class="info-box">
+            <strong>Limit:</strong> 10kb (10,240 bytes)<br>
+            <strong>Purpose:</strong> Prevent denial-of-service attacks through large payloads<br>
+            <strong>Implementation:</strong> <code>app.use(express.json({ limit: '10kb' }))</code>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 1: Small Payload (Should Succeed) ✅</h2>
+            <p>Payload size: ~200 bytes (well within 10kb limit)</p>
+            <button onclick="testSmallPayload()">Test Small Payload</button>
+            <div id="result1" class="result-box"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 2: Medium Payload (Should Succeed) ✅</h2>
+            <p>Payload size: ~5kb (within 10kb limit)</p>
+            <button onclick="testMediumPayload()">Test Medium Payload</button>
+            <div id="result2" class="result-box"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 3: Large Payload (Should Fail) ❌</h2>
+            <p>Payload size: ~15kb (exceeds 10kb limit)</p>
+            <button onclick="testLargePayload()">Test Large Payload</button>
+            <div id="result3" class="result-box"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 4: Exact Limit Payload (Should Succeed) ⚠️</h2>
+            <p>Payload size: ~10kb (at the limit)</p>
+            <button onclick="testExactLimit()">Test Exact Limit</button>
+            <div id="result4" class="result-box"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+
+        function showResult(resultId, type, message, data) {
+            const resultBox = document.getElementById(resultId);
+            resultBox.className = `result-box ${type}`;
+            resultBox.innerHTML = `<strong>${message}</strong><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+
+        async function testSmallPayload() {
+            const payload = {
+                username: 'testuser',
+                email: 'test@example.com',
+                password: 'password123',
+                data: 'Small test payload'
+            };
+            
+            const payloadSize = JSON.stringify(payload).length;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/test/payload-size`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('result1', 'success', 
+                        `✅ SUCCESS: Small payload (${payloadSize} bytes / ${(payloadSize/1024).toFixed(2)}kb) was accepted`, 
+                        data);
+                } else {
+                    showResult('result1', 'error', 
+                        `❌ ERROR: Unexpected error - ${response.status} ${response.statusText}`, 
+                        data);
+                }
+            } catch (error) {
+                showResult('result1', 'error', 
+                    `❌ REQUEST FAILED: ${error.message}`, 
+                    { error: error.message });
+            }
+        }
+
+        async function testMediumPayload() {
+            // Create ~5kb payload
+            const payload = {
+                username: 'testuser',
+                email: 'test@example.com',
+                data: 'x'.repeat(5000) // ~5kb of data
+            };
+            
+            const payloadSize = JSON.stringify(payload).length;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/test/payload-size`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('result2', 'success', 
+                        `✅ SUCCESS: Medium payload (${payloadSize} bytes / ${(payloadSize/1024).toFixed(2)}kb) was accepted`, 
+                        data);
+                } else {
+                    showResult('result2', 'error', 
+                        `❌ ERROR: Unexpected error - ${response.status} ${response.statusText}`, 
+                        data);
+                }
+            } catch (error) {
+                showResult('result2', 'error', 
+                    `❌ REQUEST FAILED: ${error.message}`, 
+                    { error: error.message });
+            }
+        }
+
+        async function testLargePayload() {
+            // Create ~15kb payload (exceeds 10kb limit)
+            const payload = {
+                username: 'testuser',
+                email: 'test@example.com',
+                data: 'x'.repeat(15000) // ~15kb of data
+            };
+            
+            const payloadSize = JSON.stringify(payload).length;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/test/payload-size`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.status === 413 || response.status === 400) {
+                    const text = await response.text();
+                    showResult('result3', 'success', 
+                        `✅ SUCCESS: Large payload (${payloadSize} bytes / ${(payloadSize/1024).toFixed(2)}kb) was correctly rejected with status ${response.status}`, 
+                        { 
+                            status: response.status, 
+                            statusText: response.statusText,
+                            message: text,
+                            payloadSizeBytes: payloadSize,
+                            payloadSizeKB: (payloadSize/1024).toFixed(2),
+                            limitKB: 10
+                        });
+                } else {
+                    const data = await response.json();
+                    showResult('result3', 'error', 
+                        `❌ UNEXPECTED: Large payload was accepted but should have been rejected. Status: ${response.status}`, 
+                        data);
+                }
+            } catch (error) {
+                if (error.message.includes('413') || error.message.includes('PayloadTooLargeError')) {
+                    showResult('result3', 'success', 
+                        `✅ SUCCESS: Large payload (${payloadSize} bytes / ${(payloadSize/1024).toFixed(2)}kb) was correctly rejected`, 
+                        { 
+                            error: error.message,
+                            payloadSizeBytes: payloadSize,
+                            payloadSizeKB: (payloadSize/1024).toFixed(2),
+                            limitKB: 10
+                        });
+                } else {
+                    showResult('result3', 'error', 
+                        `❌ UNEXPECTED ERROR: ${error.message}`, 
+                        { error: error.message });
+                }
+            }
+        }
+
+        async function testExactLimit() {
+            // Create ~10kb payload (at the limit)
+            const payload = {
+                username: 'testuser',
+                email: 'test@example.com',
+                data: 'x'.repeat(10000) // ~10kb of data
+            };
+            
+            const payloadSize = JSON.stringify(payload).length;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/test/payload-size`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('result4', 'info', 
+                        `⚠️ LIMIT TEST: Payload at limit (${payloadSize} bytes / ${(payloadSize/1024).toFixed(2)}kb) - Status: ${response.ok ? 'Accepted' : 'Rejected'}`, 
+                        data);
+                } else {
+                    showResult('result4', 'info', 
+                        `⚠️ LIMIT TEST: Payload at limit was rejected (${response.status})`, 
+                        { status: response.status, statusText: response.statusText });
+                }
+            } catch (error) {
+                showResult('result4', 'error', 
+                    `❌ ERROR: ${error.message}`, 
+                    { error: error.message });
+            }
+        }
+    </script>
+</body>
+</html>

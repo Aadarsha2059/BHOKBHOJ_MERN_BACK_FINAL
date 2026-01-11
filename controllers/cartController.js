@@ -842,13 +842,12 @@ exports.addToCart = async (req, res) => {
             console.log('🚨 SECURITY ALERT: Price manipulation attempt detected in addToCart!');
             return res.status(400).json({
                 success: false,
-                message: "Price cannot be modified. Price is set from product catalog.",
+                message: "Security violation: Price Manipulation Attack detected",
                 security: {
                     attackType: "Price Manipulation Attack",
                     severity: "CRITICAL",
-                    description: "Attempted to modify product price when adding to cart. Price manipulation attacks are blocked. Prices are always retrieved from the product catalog to prevent fraud.",
-                    action: "BLOCKED",
-                    note: "Price is automatically set from product database and cannot be changed by client requests."
+                    field: "price",
+                    action: "BLOCKED"
                 }
             });
         }
@@ -991,20 +990,12 @@ exports.updateCartItem = async (req, res) => {
             
             return res.status(400).json({
                 success: false,
-                message: "🚨 SECURITY ALERT: Negative quantity detected and BLOCKED",
+                message: "Security violation: Negative Quantity Attack detected",
                 security: {
                     attackType: "Negative Quantity Attack",
                     severity: "HIGH",
-                    description: "Attempted to set negative quantity. Negative quantities are not allowed and could be used to manipulate cart totals.",
-                    action: "BLOCKED",
-                    details: {
-                        attemptedQuantity: quantity,
-                        productId: productId,
-                        userId: userId
-                    },
-                    timestamp: new Date().toISOString(),
-                    endpoint: `${req.method} ${req.originalUrl}`,
-                    note: "This negative quantity attempt has been logged and blocked."
+                    field: "quantity",
+                    action: "BLOCKED"
                 }
             });
         }
@@ -1027,23 +1018,12 @@ exports.updateCartItem = async (req, res) => {
             
             return res.status(400).json({
                 success: false,
-                message: "🚨 SECURITY ALERT: Invalid quantity detected and BLOCKED",
+                message: "Security violation: Quantity Manipulation Attack detected",
                 security: {
                     attackType: "Quantity Manipulation Attack",
                     severity: "HIGH",
-                    description: "Attempted to set invalid quantity. Quantity must be a positive integer (at least 1). Negative, zero, or non-integer quantities are not allowed.",
-                    action: "BLOCKED",
-                    details: {
-                        attemptedQuantity: quantity,
-                        quantityType: typeof quantity,
-                        isValidInteger: Number.isInteger(Number(quantity)),
-                        isPositive: quantity >= 1,
-                        productId: productId,
-                        userId: userId
-                    },
-                    timestamp: new Date().toISOString(),
-                    endpoint: `${req.method} ${req.originalUrl}`,
-                    note: "This quantity manipulation attempt has been logged and blocked. All cart quantities must be positive integers."
+                    field: "quantity",
+                    action: "BLOCKED"
                 }
             });
         }
@@ -1073,20 +1053,13 @@ exports.updateCartItem = async (req, res) => {
             
             return res.status(400).json({
                 success: false,
-                message: "🚨 SECURITY ALERT: Price manipulation detected and BLOCKED",
+                message: "Security violation: Price Manipulation Attack detected",
                 security: {
                     attackType: "Price Manipulation Attack",
                     severity: "CRITICAL",
-                    description: "Attempted to modify product price in cart. Price manipulation attacks are blocked. Prices are always retrieved from the product catalog to prevent fraud.",
+                    field: "price",
                     action: "BLOCKED",
                     details: {
-                        attemptedPrice: req.body.price,
-                        actualProductPrice: actualPrice,
-                        priceDifference: actualPrice ? (req.body.price - actualPrice) : null,
-                        productId: productId,
-                        productName: productForValidation ? productForValidation.name : 'N/A',
-                        userId: userId,
-                        isNegativePrice: req.body.price < 0,
                         isZeroPrice: req.body.price === 0,
                         isPriceReduced: actualPrice ? (req.body.price < actualPrice) : null,
                         isPriceIncreased: actualPrice ? (req.body.price > actualPrice) : null

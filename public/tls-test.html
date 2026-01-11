@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TLS 1.3 Verification - BHOKBHOJ</title>
+    <title>TLS Next Verification - BHOKBHOJ</title>
     <style>
         * {
             margin: 0;
@@ -183,7 +183,7 @@
     <div class="container">
         <div class="icon">🔐</div>
         <h1>BHOKBHOJ Security Status</h1>
-        <p class="subtitle">TLS 1.3 Implementation Verification</p>
+        <p class="subtitle">TLS Next (1.3 preferred, 1.2 fallback) Implementation Verification</p>
         
         <div id="connectionStatus" class="status">
             <strong>🔍 Checking connection security...</strong>
@@ -216,7 +216,7 @@
                 statusDiv.innerHTML = `
                     <strong>✅ Secure Connection Established</strong><br>
                     <span class="badge success">HTTPS ENABLED</span>
-                    <span class="badge info">TLS 1.3</span>
+                    <span class="badge info">TLS Next</span>
                 `;
             } else {
                 statusDiv.className = 'status warning';
@@ -257,19 +257,28 @@
                 
                 <div class="info-card">
                     <h3>🛡️ TLS Protocol</h3>
-                    <p>Version: <span class="value">${data.connection.protocol || data.server.tlsVersion}</span></p>
-                    <span class="badge success">LATEST VERSION</span>
+                    <p>Current: <span class="value">${data.connection.protocol || 'Negotiating...'}</span></p>
+                    <p>Supported: <span class="value">${data.server.minTlsVersion} - ${data.server.maxTlsVersion}</span></p>
+                    <span class="badge success">TLS NEXT</span>
                 </div>
                 
                 <div class="info-card">
                     <h3>🔐 Cipher Suite</h3>
-                    <p>${data.connection.cipher ? data.connection.cipher.name : 'N/A'}</p>
-                    <span class="badge info">AES-256-GCM</span>
+                    <p>Current: <span class="value">${data.connection.cipher ? data.connection.cipher.name : 'N/A'}</span></p>
+                    <p>Key Exchange: <span class="value">${data.connection.cipher ? (data.connection.cipher.name.includes('ECDHE') ? 'ECDHE (PFS)' : 'Secure') : 'N/A'}</span></p>
+                    <span class="badge info">STRONG ENCRYPTION</span>
                 </div>
                 
                 <div class="info-card">
                     <h3>⏱️ Timestamp</h3>
                     <p><span class="value">${new Date(data.timestamp).toLocaleString()}</span></p>
+                </div>
+                
+                <div class="info-card">
+                    <h3>🔒 Server Configuration</h3>
+                    <p>Min TLS: <span class="value">${data.server.minTlsVersion}</span></p>
+                    <p>Max TLS: <span class="value">${data.server.maxTlsVersion}</span></p>
+                    <p>PFS: <span class="value">${data.server.perfectForwardSecrecy}</span></p>
                 </div>
             `;
         }

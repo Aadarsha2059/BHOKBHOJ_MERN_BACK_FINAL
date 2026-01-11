@@ -1,5 +1,6 @@
 const User = require("../../models/User");
 const bcrypt = require("bcrypt");
+const { decrypt } = require("../../utils/aesEncryption");
 
 // Create User
 exports.createUser = async (req, res) => {
@@ -51,7 +52,14 @@ exports.createUser = async (req, res) => {
         const userResponse = newUser.toObject();
         delete userResponse.password;
         delete userResponse.otp;
+        delete userResponse.otpCreatedAt;
         delete userResponse.otpExpiry;
+        delete userResponse.otpExpiryFormatted;
+        delete userResponse.otpTimeRemainingMinutes;
+        delete userResponse.otpRemainingTimeFormatted;
+        delete userResponse.emailVerificationToken;
+        delete userResponse.emailVerificationTokenExpires;
+        delete userResponse.emailVerificationTokenExpiresFormatted;
 
         return res.status(201).json({
             success: true,
@@ -65,6 +73,47 @@ exports.createUser = async (req, res) => {
             // ✅ SECURED: Don't expose error details in production
             error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
+    }
+};
+
+// Helper function to decrypt sensitive fields for admin panel display
+const decryptField = (encryptedValue) => {
+    if (!encryptedValue) return null;
+    
+    // If it's not a string, return as is
+    if (typeof encryptedValue !== 'string') {
+        return encryptedValue;
+    }
+    
+    const trimmed = encryptedValue.trim();
+    
+    // If it doesn't start with '{', it's likely already plain text
+    if (!trimmed.startsWith('{')) {
+        return encryptedValue;
+    }
+    
+    // Try to parse as JSON
+    try {
+        const parsed = JSON.parse(trimmed);
+        
+        // Check if it has the encrypted structure
+        if (parsed.encrypted && parsed.iv && (parsed.authTag || parsed.authtag)) {
+            // It's encrypted, decrypt it
+            try {
+                const decrypted = decrypt(encryptedValue);
+                return decrypted;
+            } catch (decryptError) {
+                // Decryption failed, return original
+                console.warn('Decryption failed for field:', decryptError.message);
+                return encryptedValue;
+            }
+        } else {
+            // Not encrypted format, return as is
+            return encryptedValue;
+        }
+    } catch (parseError) {
+        // Not valid JSON, return as is (might be plain text)
+        return encryptedValue;
     }
 };
 
@@ -83,13 +132,22 @@ exports.getUsers = async (req, res) => {
             .lean()
             .sort({ createdAt: -1 }); // Add index-friendly sort
 
+        // ✅ DECRYPT FOR ADMIN PANEL: Decrypt email, phone, and address for display
+        // Database still has encrypted data, but admin panel shows decrypted
+        const decryptedUsers = users.map(user => ({
+            ...user,
+            email: decryptField(user.email),
+            phone: decryptField(user.phone),
+            address: decryptField(user.address)
+        }));
+
         // ✅ Use countDocuments in parallel (non-blocking)
         const total = await User.countDocuments();
 
         return res.status(200).json({
             success: true,
             message: "All users fetched successfully",
-            data: users,
+            data: decryptedUsers,
             pagination: {
                 total,
                 page: Number(page),
@@ -112,7 +170,11 @@ exports.getOneUser = async (req, res) => {
 
     try {
         // ✅ SECURED: Exclude sensitive fields from query
-        const user = await User.findById(id).select('-password -otp -otpExpiry -googleId -facebookId');
+        // Use lean() to get raw data, then decrypt for admin panel
+        const user = await User.findById(id)
+            .select('-password -otp -otpCreatedAt -otpExpiry -otpExpiryFormatted -otpTimeRemainingMinutes -otpRemainingTimeFormatted -emailVerificationToken -emailVerificationTokenExpires -emailVerificationTokenExpiresFormatted -googleId -facebookId')
+            .lean();
+            
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -120,10 +182,18 @@ exports.getOneUser = async (req, res) => {
             });
         }
 
+        // ✅ DECRYPT FOR ADMIN PANEL: Decrypt email, phone, and address for display
+        const decryptedUser = {
+            ...user,
+            email: decryptField(user.email),
+            phone: decryptField(user.phone),
+            address: decryptField(user.address)
+        };
+
         return res.status(200).json({
             success: true,
             message: "User fetched successfully",
-            data: user,
+            data: decryptedUser,
         });
     } catch (err) {
         return res.status(500).json({
@@ -175,7 +245,9 @@ exports.updateOne = async (req, res) => {
 
         const updatedUser = await User.findByIdAndUpdate(id, updateData, {
             new: true,
-        }).select('-password -otp -otpExpiry -googleId -facebookId');
+        })
+        .select('-password -otp -otpExpiry -googleId -facebookId')
+        .lean();
 
         if (!updatedUser) {
             return res.status(404).json({
@@ -184,10 +256,18 @@ exports.updateOne = async (req, res) => {
             });
         }
 
+        // ✅ DECRYPT FOR ADMIN PANEL: Decrypt email, phone, and address for display
+        const decryptedUser = {
+            ...updatedUser,
+            email: decryptField(updatedUser.email),
+            phone: decryptField(updatedUser.phone),
+            address: decryptField(updatedUser.address)
+        };
+
         return res.status(200).json({
             success: true,
             message: "User updated successfully",
-            data: updatedUser,
+            data: decryptedUser,
         });
     } catch (err) {
         return res.status(500).json({

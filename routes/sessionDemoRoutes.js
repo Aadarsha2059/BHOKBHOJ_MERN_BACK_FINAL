@@ -84,6 +84,25 @@ router.get('/view-session', (req, res) => {
     });
 });
 
+// Test endpoint to see session logs (similar to image format)
+router.get('/logs', (req, res) => {
+    const { page = 1, limit = 10, sortBy = 'timestamp', sortOrder = 'desc' } = req.query;
+    
+    // This will trigger session logging
+    res.json({
+        success: true,
+        message: 'Logs endpoint - check server console for session information',
+        sessionId: req.sessionID,
+        query: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sortBy,
+            sortOrder
+        },
+        note: 'Session information is logged in server console. Check terminal/console output.'
+    });
+});
+
 // Destroy session
 router.get('/destroy-session', (req, res) => {
     req.session.destroy((err) => {

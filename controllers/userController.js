@@ -160,7 +160,7 @@
 
 //     // Create reset token
 //     const token = jwt.sign({ id: user._id }, process.env.SECRET, { expiresIn: "20m" });
-//     const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${token}`;
+//     const resetUrl = `${envConfig.urls.clientUrl}/reset-password/${token}`;
 
 //     // For testing purposes, log the reset URL instead of sending email
 //     console.log('Password reset URL:', resetUrl);
@@ -356,6 +356,8 @@
 const User = require("../models/User");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const { envConfig } = require("../config/envConfig");
 const nodemailer = require("nodemailer");
 // Import security middleware
 const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS } = require("../middlewares/securityMiddleware");
@@ -385,16 +387,9 @@ exports.registerUser = async (req, res) => {
   console.log('🕐 Timestamp:', new Date().toISOString());
   console.log('═══════════════════════════════════════\n');
 
+  // ✅ INPUT VALIDATION: Yup validation middleware already validated req.body
+  // All fields are validated, sanitized, and ready to use
   const { fullname, username, email, password, confirmpassword, phone, address } = req.body;
-
-  // Only username, email and password are required
-  if (!username || !email || !password) {
-    return res.status(400).json({ success: false, message: "Username, email and password are required" });
-  }
-
-  if (confirmpassword && password !== confirmpassword) {
-    return res.status(400).json({ success: false, message: "Passwords do not match" });
-  }
 
   try {
     // Check for existing user by username
@@ -412,6 +407,11 @@ exports.registerUser = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // ✅ EMAIL VERIFICATION: Generate verification token
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    const emailVerificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const emailVerificationTokenExpiresFormatted = emailVerificationTokenExpires.toISOString();
+
     // Create new user
     const newUser = new User({
       fullname,
@@ -420,6 +420,10 @@ exports.registerUser = async (req, res) => {
       password: hashedPassword,
       phone,
       address,
+      emailVerificationToken,
+      emailVerificationTokenExpires,
+      emailVerificationTokenExpiresFormatted,
+      isEmailVerified: false
     });
 
     await newUser.save();
@@ -431,6 +435,8 @@ exports.registerUser = async (req, res) => {
     console.log('📧 Registered Email:', newUser.email);
     console.log('👤 Registered Username:', newUser.username);
     console.log('🆔 User ID:', newUser._id);
+    console.log('🔐 Email Verification Token:', emailVerificationToken);
+    console.log('⏰ Email Verification Token Expires:', emailVerificationTokenExpiresFormatted);
     console.log('🕐 Registration Time:', newUser.createdAt || new Date().toISOString());
     console.log('═══════════════════════════════════════\n');
 
@@ -474,9 +480,10 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-// Generate 6-digit OTP
+
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  
+  return crypto.randomInt(100000, 1000000).toString();
 };
 
 // Login User with 2FA (Step 1: Verify credentials and send OTP)
@@ -484,7 +491,7 @@ exports.loginUser = async (req, res) => {
   // 🔍 BURP SUITE TESTING: Log login request details
   console.log('\n🔍 LOGIN REQUEST INTERCEPTED:');
   console.log('═══════════════════════════════════════');
-  console.log('👤 Username/Email:', req.body.username || req.body.email);
+  console.log('👤 Username:', req.body.username);
   console.log('🔑 Password:', req.body.password);
   console.log('🌐 Origin:', req.headers.origin);
   console.log('🔗 Referer:', req.headers.referer);
@@ -492,25 +499,40 @@ exports.loginUser = async (req, res) => {
   console.log('═══════════════════════════════════════\n');
 
   console.log('Login request body:', req.body);
-  // Accept both username and email fields
-  const { username, email, password } = req.body;
-  const loginIdentifier = username || email;
+  
+  // ✅ IP-BASED SECURITY: Extract IP address
+  const ip = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || 'Unknown';
+  const IPBlockService = require('../services/ipBlockService');
+  
+  // ✅ IP-BASED SECURITY: Check if IP is blocked
+  if (IPBlockService.isBlocked(ip)) {
+    const remainingMinutes = IPBlockService.getRemainingBlockTime(ip);
+    const attemptCount = IPBlockService.getAttemptCount(ip);
+    return res.status(403).json({
+      success: false,
+      message: `Access temporarily blocked due to multiple failed attempts. Please try again in ${remainingMinutes} minute(s).`,
+      ipBlocked: true,
+      remainingMinutes: remainingMinutes,
+      ipAttempts: attemptCount,
+      blockedIP: ip
+    });
+  }
+  
+  // Accept only username field (strict)
+  const { username, password } = req.body;
 
   // Validation
-  if (!loginIdentifier || !password) {
-    console.log('Missing fields - identifier:', loginIdentifier, 'password:', password ? 'provided' : 'missing');
+  if (!username || !password) {
+    console.log('Missing fields - username:', username, 'password:', password ? 'provided' : 'missing');
     return res.status(400).json({ success: false, message: "Missing field" });
   }
 
   try {
-    // Find user by username or email
-    const user = await User.findOne({
-      $or: [
-        { username: loginIdentifier },
-        { email: loginIdentifier }
-      ]
-    });
+    // Find user by username only (strict)
+    const user = await User.findOne({ username: username });
     if (!user) {
+      // ✅ IP-BASED SECURITY: Record failed attempt for non-existent user
+      await IPBlockService.recordAttempt(ip, req.originalUrl);
       return res.status(403).json({ success: false, message: "User not found" });
     }
 
@@ -535,13 +557,70 @@ exports.loginUser = async (req, res) => {
 
     const passwordCheck = await bcrypt.compare(password, user.password);
     if (!passwordCheck) {
-      // ✅ SECURED: Increment failed login attempts
+      // ✅ IP-BASED SECURITY: Record failed authentication attempt
+      await IPBlockService.recordAttempt(ip, req.originalUrl);
+      
+      //  Increment failed login attempts
       user.loginAttempts = (user.loginAttempts || 0) + 1;
       
       // Lock account after 10 failed attempts
       if (user.loginAttempts >= 10) {
         user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000); // Lock for 10 minutes
         await user.save();
+        
+        // ✅ SECURITY NOTIFICATION: Send account locked alert (suspicious activity) - Only send once at exactly 10 attempts
+        if (user.loginAttempts === 10) {
+          console.log('\n🚨 CRITICAL SECURITY ALERT: Account locked after 10 failed login attempts - Sending email notification...');
+          console.log('👤 User:', user.username);
+          console.log('📧 Email:', user.email);
+          console.log('🌐 IP:', ip);
+          console.log('🔒 Account locked until:', user.accountLockedUntil);
+          console.log('═══════════════════════════════════════\n');
+          
+          // ✅ ENHANCED: Extract device information and location using enhanced services
+          let formattedDeviceInfo = 'Unknown Device';
+          let locationString = 'Unknown Location';
+          
+          try {
+            const { extractDeviceInfo } = require('../utils/deviceFingerprint');
+            const { getLocationFromIP, getFormattedDeviceInfo } = require('../utils/geolocationService');
+            
+            const deviceInfo = extractDeviceInfo(req);
+            formattedDeviceInfo = getFormattedDeviceInfo(deviceInfo);
+            const locationData = await getLocationFromIP(ip);
+            locationString = locationData.locationString || 'Unknown Location';
+          } catch (geoError) {
+            console.error('⚠️  Error getting location/device info (email will still send):', geoError.message);
+            // Continue with defaults if geolocation fails
+          }
+          
+          const { sendSuspiciousActivityAlert } = require('../utils/securityNotificationService');
+          const emailResult = await sendSuspiciousActivityAlert(user, {
+            type: 'Account Locked - Multiple Failed Login Attempts',
+            ipAddress: ip,
+            location: locationString,
+            timestamp: new Date().toISOString(),
+            description: `Your account has been temporarily locked due to ${user.loginAttempts} failed login attempts from IP ${ip} (${locationString}) using ${formattedDeviceInfo}. The account will be unlocked automatically after 10 minutes. If this was not you, please secure your account immediately by changing your password.`
+          });
+          
+          if (emailResult && emailResult.success) {
+            console.log('✅ Account locked security notification email sent successfully');
+            if (emailResult.previewUrl) {
+              console.log('🌐 Email Preview URL:', emailResult.previewUrl);
+              console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
+              console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+            } else {
+              console.log('📧 Email sent to:', user.email);
+              console.log('✅ Check your email inbox for the account locked security notification');
+            }
+          } else {
+            console.error('❌ Failed to send account locked security notification email');
+            if (emailResult && emailResult.error) {
+              console.error('Error:', emailResult.error);
+            }
+          }
+        }
+        
         return res.status(403).json({ 
           success: false, 
           message: "Too many failed login attempts. Account locked for 10 minutes.",
@@ -553,22 +632,83 @@ exports.loginUser = async (req, res) => {
       
       await user.save();
       const remainingAttempts = 10 - user.loginAttempts;
+      const ipAttempts = IPBlockService.getAttemptCount(ip);
+      const ipRemainingAttempts = 5 - ipAttempts;
+      
+      // ✅ SECURITY NOTIFICATION: Send unauthorized login attempt alert when reaching exactly 5 failed attempts
+      // Security: Email is sent to the user's email (user.email) - the owner of the username used in login attempt
+      // This ensures that even if hackers know a username and try wrong passwords, the real user gets notified
+      if (user.loginAttempts === 5) {
+        console.log('\n🚨 SECURITY ALERT: 5 failed login attempts detected - Sending email notification...');
+        console.log('👤 User:', user.username);
+        console.log('📧 Email:', user.email);
+        console.log('🌐 IP:', ip);
+        console.log('═══════════════════════════════════════\n');
+        
+        const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
+        const emailResult = await sendUnauthorizedLoginAttemptAlert(user, {
+          ipAddress: ip,
+          location: 'Unknown Location',
+          timestamp: new Date().toISOString(),
+          deviceInfo: req.get('user-agent') || 'Unknown Device',
+          failedAttempts: user.loginAttempts
+        });
+        
+        if (emailResult && emailResult.success) {
+          console.log('✅ Security notification email sent successfully');
+          if (emailResult.previewUrl) {
+            console.log('🌐 Email Preview URL:', emailResult.previewUrl);
+            console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
+            console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+          } else {
+            console.log('📧 Email sent to:', user.email);
+            console.log('✅ Check your email inbox for the security notification');
+          }
+        } else {
+          console.error('❌ Failed to send security notification email');
+          if (emailResult && emailResult.error) {
+            console.error('Error:', emailResult.error);
+          }
+        }
+      }
+      
       return res.status(403).json({ 
         success: false, 
         message: `Invalid credentials. ${remainingAttempts} attempt(s) remaining before account lockout.`,
-        remainingAttempts: remainingAttempts
+        remainingAttempts: remainingAttempts,
+        ipAttempts: ipAttempts,
+        ipRemainingAttempts: ipRemainingAttempts > 0 ? ipRemainingAttempts : 0
       });
     }
 
+    // ✅ IP-BASED SECURITY: Clear any previous block attempts on successful authentication
+    IPBlockService.clearAttempts(ip);
+    
     // ✅ SECURED: Reset login attempts on successful password verification
     user.loginAttempts = 0;
     user.accountLockedUntil = null;
     await user.save();
 
+    // ✅ PASSWORD EXPIRY: Check if password has expired
+    if (user.isPasswordExpired()) {
+      return res.status(403).json({
+        success: false,
+        message: "Password expired. Please reset your password.",
+        requirePasswordReset: true
+      });
+    }
+
+    // ✅ PASSWORD EXPIRY: Check if password needs expiry warning (expires within 7 days)
+    let passwordExpiryWarning = null;
+    if (user.needsExpiryWarning()) {
+      const daysRemaining = Math.ceil((user.passwordExpiresAt - new Date()) / (1000 * 60 * 60 * 24));
+      passwordExpiryWarning = `Your password will expire in ${daysRemaining} day(s). Please change your password soon.`;
+    }
+
     // For admin users, skip OTP and login directly
     if (user.role === 'admin') {
       // ✅ SECURED: Regenerate session on login (prevents session fixation attack)
-      req.session.regenerate((err) => {
+      req.session.regenerate(async (err) => {
         if (err) {
           console.error('Session regeneration error:', err);
           return res.status(500).json({
@@ -577,12 +717,35 @@ exports.loginUser = async (req, res) => {
           });
         }
 
-        // Set user data in new session
+        // ✅ DECRYPT EMAIL: Ensure email is decrypted before storing in express-session
+        // Express-session is server-side only, so we can store plain text emails
+        const { decrypt } = require('../utils/aesEncryption');
+        let decryptedEmail = user.email;
+        try {
+            // If email is encrypted (JSON format), decrypt it
+            if (typeof user.email === 'string' && user.email.trim().startsWith('{')) {
+                decryptedEmail = decrypt(user.email);
+            } else {
+                // User model getter should have already decrypted it, but ensure it's plain text
+                decryptedEmail = user.email;
+            }
+        } catch (error) {
+            // If decryption fails, use the email as is (might already be plain text)
+            decryptedEmail = user.email;
+        }
+
+        // Set user data in new session (with decrypted email)
         req.session.userId = user._id;
         req.session.username = user.username;
-        req.session.email = user.email;
+        req.session.email = decryptedEmail; // Store decrypted email in session
         req.session.role = user.role;
         req.session.loginTime = new Date().toISOString();
+        req.session.ipAddress = req.ip || req.connection.remoteAddress;
+        req.session.userAgent = req.get('user-agent');
+        
+        // ✅ SESSION TIMEOUT: Set session cookie expiration to 15 minutes
+        req.session.cookie.originalMaxAge = 15 * 60 * 1000; // 15 minutes
+        req.session.cookie.expires = new Date(Date.now() + 15 * 60 * 1000);
         
         // ✅ SECURED: Ensure login attempts are reset (double-check)
         user.loginAttempts = 0;
@@ -591,12 +754,32 @@ exports.loginUser = async (req, res) => {
 
         const payload = {
           _id: user._id,
+          id: user._id,
           username: user.username,
           email: user.email,
           role: user.role
         };
 
         const token = jwt.sign(payload, process.env.SECRET || 'your-secret-key', { expiresIn: "24h" });
+
+        // ✅ SESSION MANAGEMENT: Create session in database for tracking
+        const { createSession } = require('../middlewares/sessionMiddleware');
+        try {
+          await createSession(user._id, token, req);
+        } catch (sessionError) {
+          console.error('Error creating session:', sessionError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to create session. Please try again.'
+          });
+        }
+
+        // ✅ DEVICE TRACKING: Track device on successful admin login
+        const { trackDevice } = require('../services/deviceTrackingService');
+        trackDevice(user, req).catch(deviceError => {
+          console.error('Error tracking device:', deviceError);
+          // Continue with login even if device tracking fails
+        });
 
         // 🔍 BURP SUITE TESTING: Log admin login response
         console.log('\n✅ ADMIN LOGIN RESPONSE SENT:');
@@ -620,7 +803,8 @@ exports.loginUser = async (req, res) => {
             fullname: user.fullname,
             phone: user.phone
           },
-          redirectTo: '/admin'
+          redirectTo: '/admin',
+          ...(passwordExpiryWarning && { warning: passwordExpiryWarning })
         });
       });
       return; // Exit early after regenerate callback
@@ -628,11 +812,21 @@ exports.loginUser = async (req, res) => {
 
     // For regular users, generate and send OTP
     const otp = generateOTP();
+    const otpCreatedAt = new Date();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Save OTP to user
+    // Format expiry for MongoDB Compass display (ISO format with timezone)
+    const otpExpiryFormatted = otpExpiry.toISOString();
+    const otpTimeRemainingMinutes = 10; // 10 minutes validity
+    const otpRemainingTimeFormatted = `${otpTimeRemainingMinutes} minutes remaining`;
+
+    // Save OTP to user with expiry details
     user.otp = otp;
+    user.otpCreatedAt = otpCreatedAt;
     user.otpExpiry = otpExpiry;
+    user.otpExpiryFormatted = otpExpiryFormatted;
+    user.otpTimeRemainingMinutes = otpTimeRemainingMinutes;
+    user.otpRemainingTimeFormatted = otpRemainingTimeFormatted;
     user.otpVerified = false;
     await user.save();
 
@@ -651,15 +845,50 @@ exports.loginUser = async (req, res) => {
       console.log('═══════════════════════════════════════');
       console.log('📧 Email should be sent to:', user.email);
       console.log('🔢 OTP Code:', otp);
+      console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
       console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
+      console.log('⏱️  OTP Valid For: 10 minutes');
       console.log('═══════════════════════════════════════\n');
+
+      // ✅ SESSION LOGGING: Log session information during login (before OTP verification)
+      if (req.session && req.sessionID) {
+        console.log(`\n📋 Session ID: ${req.sessionID}`);
+        const sessionData = {
+          cookie: {
+            originalMaxAge: req.session.cookie?.originalMaxAge || null,
+            expires: req.session.cookie?.expires ? new Date(req.session.cookie.expires).toISOString() : null,
+            secure: req.session.cookie?.secure || false,
+            httpOnly: req.session.cookie?.httpOnly || false,
+            path: req.session.cookie?.path || '/',
+            sameSite: req.session.cookie?.sameSite || 'lax'
+          }
+        };
+        console.log('📋 Session Data:', JSON.stringify(sessionData, null, 2));
+      }
+
+      // ✅ SESSION INFO: Include session information in response for OTP page
+      const sessionInfo = req.session && req.sessionID ? {
+        sessionId: req.sessionID,
+        sessionData: {
+          cookie: {
+            originalMaxAge: req.session.cookie?.originalMaxAge || null,
+            expires: req.session.cookie?.expires ? new Date(req.session.cookie.expires).toISOString() : null,
+            secure: req.session.cookie?.secure || false,
+            httpOnly: req.session.cookie?.httpOnly || false,
+            path: req.session.cookie?.path || '/',
+            sameSite: req.session.cookie?.sameSite || 'lax'
+          }
+        }
+      } : null;
 
       return res.status(200).json({
         success: true,
         message: "OTP sent to your email",
         requireOTP: true,
         userId: user._id,
-        email: user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Masked email
+        email: user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3'), // Masked email
+        ...(passwordExpiryWarning && { warning: passwordExpiryWarning }),
+        ...(sessionInfo && { sessionInfo }) // Include session info for viewing on OTP page
       });
     }
 
@@ -856,6 +1085,9 @@ This is an automated email. Please do not reply to this message.`,
         console.log('📧 To:', user.email);
         console.log('📧 From (Ethereal):', etherealAccount.user);
         console.log('🔢 OTP Code:', otp);
+        console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
+        console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
+        console.log('⏱️  OTP Valid For: 10 minutes');
         console.log('📨 Message ID:', info.messageId);
         console.log('🌐 🌐 🌐 EMAIL PREVIEW URL 🌐 🌐 🌐');
         console.log('🌐', emailPreviewUrl || 'Not available');
@@ -882,7 +1114,9 @@ This is an automated email. Please do not reply to this message.`,
         console.log('📧 Email should be sent to:', user.email);
         console.log('👤 Username:', user.username);
         console.log('🔢 🔐 CURRENT OTP CODE:', otp);
+        console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
         console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
+        console.log('⏱️  OTP Valid For: 10 minutes');
         console.log('🕐 Generated At:', new Date().toISOString());
         console.log('═══════════════════════════════════════════════════════════════');
         console.log('💡 IMPORTANT: Use the OTP code above to login');
@@ -909,6 +1143,7 @@ This is an automated email. Please do not reply to this message.`,
       // Always include OTP as fallback
       otp: otp,
       otpExpiry: otpExpiry.toISOString(),
+      ...(passwordExpiryWarning && { warning: passwordExpiryWarning }),
       // Ethereal email preview URL - open this to see the beautiful email
       emailPreviewUrl: emailPreviewUrl,
       previewUrl: emailPreviewUrl, // Also include as previewUrl for backward compatibility
@@ -940,7 +1175,9 @@ This is an automated email. Please do not reply to this message.`,
     console.log('👤 Username:', user.username);
     console.log('📧 Email:', user.email);
     console.log('🔢 Generated OTP:', otp);
+    console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
     console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
+    console.log('⏱️  OTP Valid For: 10 minutes');
     console.log('🆔 User ID:', user._id);
     console.log('⚡ Response Time: < 100ms (email sending in background)');
     console.log('🕐 Request Time:', new Date().toISOString());
@@ -1010,7 +1247,11 @@ exports.verifyOTP = async (req, res) => {
     // Check if OTP is expired
     if (new Date() > user.otpExpiry) {
       user.otp = null;
+      user.otpCreatedAt = null;
       user.otpExpiry = null;
+      user.otpExpiryFormatted = null;
+      user.otpTimeRemainingMinutes = null;
+      user.otpRemainingTimeFormatted = null;
       await user.save();
       return res.status(400).json({
         success: false,
@@ -1028,12 +1269,32 @@ exports.verifyOTP = async (req, res) => {
 
     // OTP is valid - clear OTP and generate token
     user.otp = null;
+    user.otpCreatedAt = null;
     user.otpExpiry = null;
+    user.otpExpiryFormatted = null;
+    user.otpTimeRemainingMinutes = null;
+    user.otpRemainingTimeFormatted = null;
     user.otpVerified = true;
     // ✅ SECURED: Reset login attempts on successful OTP verification
     user.loginAttempts = 0;
     user.accountLockedUntil = null;
     await user.save();
+
+    // ✅ PASSWORD EXPIRY: Check if password has expired
+    if (user.isPasswordExpired()) {
+      return res.status(403).json({
+        success: false,
+        message: "Password expired. Please reset your password.",
+        requirePasswordReset: true
+      });
+    }
+
+    // ✅ PASSWORD EXPIRY: Check if password needs expiry warning (expires within 7 days)
+    let passwordExpiryWarning = null;
+    if (user.needsExpiryWarning()) {
+      const daysRemaining = Math.ceil((user.passwordExpiresAt - new Date()) / (1000 * 60 * 60 * 24));
+      passwordExpiryWarning = `Your password will expire in ${daysRemaining} day(s). Please change your password soon.`;
+    }
 
     // ✅ SECURED: Regenerate session on login (prevents session fixation attack)
     req.session.regenerate((err) => {
@@ -1046,18 +1307,56 @@ exports.verifyOTP = async (req, res) => {
       }
 
       // Set user data in new session
+      // ✅ DECRYPT EMAIL: Ensure email is decrypted before storing in express-session
+      const { decrypt } = require('../utils/aesEncryption');
+      let decryptedEmail = user.email;
+      try {
+          // If email is encrypted (JSON format), decrypt it
+          if (typeof user.email === 'string' && user.email.trim().startsWith('{')) {
+              decryptedEmail = decrypt(user.email);
+          } else {
+              // User model getter should have already decrypted it, but ensure it's plain text
+              decryptedEmail = user.email;
+          }
+      } catch (error) {
+          // If decryption fails, use the email as is (might already be plain text)
+          decryptedEmail = user.email;
+      }
+
       req.session.userId = user._id;
       req.session.username = user.username;
-      req.session.email = user.email;
+      req.session.email = decryptedEmail; // Store decrypted email in session
       req.session.role = user.role || 'user';
       req.session.loginTime = new Date().toISOString();
+      req.session.ipAddress = req.ip || req.connection.remoteAddress;
+      req.session.userAgent = req.get('user-agent');
+
+      // ✅ SESSION TIMEOUT: Set session cookie expiration to 15 minutes
+      req.session.cookie.originalMaxAge = 15 * 60 * 1000; // 15 minutes
+      req.session.cookie.expires = new Date(Date.now() + 15 * 60 * 1000);
 
       const payload = {
         _id: user._id,
+        id: user._id,
         username: user.username,
       };
 
       const token = jwt.sign(payload, process.env.SECRET, { expiresIn: "7d" });
+
+      // ✅ SESSION MANAGEMENT: Create session in database for tracking
+      const { createSession } = require('../middlewares/sessionMiddleware');
+      // Use .then() instead of await since we're in a callback
+      createSession(user._id, token, req).catch(sessionError => {
+        console.error('Error creating session:', sessionError);
+        // Continue with login even if session creation fails
+      });
+
+      // ✅ DEVICE TRACKING: Track device on successful OTP verification
+      const { trackDevice } = require('../services/deviceTrackingService');
+      trackDevice(user, req).catch(deviceError => {
+        console.error('Error tracking device:', deviceError);
+        // Continue with login even if device tracking fails
+      });
 
       // 🔍 BURP SUITE TESTING: Log OTP verification response
       console.log('\n✅ OTP VERIFICATION RESPONSE SENT:');
@@ -1071,6 +1370,46 @@ exports.verifyOTP = async (req, res) => {
       console.log('⏰ Token Expires In: 7 days');
       console.log('🕐 Verification Time:', new Date().toISOString());
       console.log('═══════════════════════════════════════\n');
+
+      // ✅ SESSION LOGGING: Log session information after OTP verification
+      if (req.session && req.sessionID) {
+        console.log(`\n📋 Session ID: ${req.sessionID}`);
+        const sessionData = {
+          cookie: {
+            originalMaxAge: req.session.cookie?.originalMaxAge || null,
+            expires: req.session.cookie?.expires ? new Date(req.session.cookie.expires).toISOString() : null,
+            secure: req.session.cookie?.secure || false,
+            httpOnly: req.session.cookie?.httpOnly || false,
+            path: req.session.cookie?.path || '/',
+            sameSite: req.session.cookie?.sameSite || 'lax'
+          },
+          userId: req.session.userId,
+          username: req.session.username,
+          email: req.session.email,
+          role: req.session.role
+        };
+        console.log('📋 Session Data:', JSON.stringify(sessionData, null, 2));
+      }
+
+      // ✅ SESSION LOGGING: Log session information after OTP verification
+      if (req.session && req.sessionID) {
+        console.log(`\n📋 Session ID: ${req.sessionID}`);
+        const sessionData = {
+          cookie: {
+            originalMaxAge: req.session.cookie?.originalMaxAge || null,
+            expires: req.session.cookie?.expires ? new Date(req.session.cookie.expires).toISOString() : null,
+            secure: req.session.cookie?.secure || false,
+            httpOnly: req.session.cookie?.httpOnly || false,
+            path: req.session.cookie?.path || '/',
+            sameSite: req.session.cookie?.sameSite || 'lax'
+          },
+          userId: req.session.userId,
+          username: req.session.username,
+          email: req.session.email,
+          role: req.session.role
+        };
+        console.log('📋 Session Data:', JSON.stringify(sessionData, null, 2));
+      }
 
       // Return user data without password
       const userResponse = {
@@ -1088,6 +1427,7 @@ exports.verifyOTP = async (req, res) => {
       return res.status(200).json({
         success: true,
         message: "Login successful",
+        ...(passwordExpiryWarning && { warning: passwordExpiryWarning }),
         user: userResponse,
         token: token,
       });
@@ -1235,7 +1575,7 @@ exports.updateUserProfile = async (req, res) => {
 
     // ✅ SECURITY BY DESIGN: Explicitly remove protected fields if present
     // Even if attacker tries to send 'role' or 'isAdmin' in request, we ignore them
-    const protectedFields = ['role', 'isAdmin', '_id', 'password', 'loginAttempts', 'accountLockedUntil', 'otp', 'otpExpiry', 'otpVerified', 'googleId', 'facebookId', 'provider', 'favorites'];
+    const protectedFields = ['role', 'isAdmin', '_id', 'password', 'loginAttempts', 'accountLockedUntil', 'otp', 'otpCreatedAt', 'otpExpiry', 'otpExpiryFormatted', 'otpTimeRemainingMinutes', 'otpRemainingTimeFormatted', 'otpVerified', 'emailVerificationToken', 'emailVerificationTokenExpires', 'emailVerificationTokenExpiresFormatted', 'googleId', 'facebookId', 'provider', 'favorites'];
     
     // Log security warning if protected fields are attempted
     const attemptedProtectedFields = protectedFields.filter(field => req.body[field] !== undefined);
@@ -1322,7 +1662,7 @@ exports.updateUserProfile = async (req, res) => {
       {
         new: true,
         runValidators: true, // Run schema validators
-        select: '-password -otp -otpExpiry -loginAttempts -accountLockedUntil' // Exclude sensitive fields
+        select: '-password -otp -otpCreatedAt -otpExpiry -otpExpiryFormatted -otpTimeRemainingMinutes -otpRemainingTimeFormatted -emailVerificationToken -emailVerificationTokenExpires -emailVerificationTokenExpiresFormatted -loginAttempts -accountLockedUntil' // Exclude sensitive fields
       }
     );
 
@@ -1344,7 +1684,7 @@ exports.updateUserProfile = async (req, res) => {
       // Revert the change
       await User.findByIdAndUpdate(userId, { role: user.role });
       // Re-fetch user with correct role
-      const revertedUser = await User.findById(userId).select('-password -otp -otpExpiry -loginAttempts -accountLockedUntil');
+      const revertedUser = await User.findById(userId).select('-password -otp -otpCreatedAt -otpExpiry -otpExpiryFormatted -otpTimeRemainingMinutes -otpRemainingTimeFormatted -emailVerificationToken -emailVerificationTokenExpires -emailVerificationTokenExpiresFormatted -loginAttempts -accountLockedUntil');
       return res.status(200).json({
         success: true,
         message: "Profile updated successfully (protected fields were ignored)",
@@ -1419,7 +1759,40 @@ exports.sendResetLink = async (req, res) => {
   const { email } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    // Normalize email: lowercase and trim (same as User model setter)
+    // The User model has lowercase: true and trim: true, so we normalize here too
+    const normalizedEmail = email ? String(email).toLowerCase().trim() : '';
+    
+    console.log('\n🔍 FORGOT PASSWORD REQUEST:');
+    console.log('═══════════════════════════════════════');
+    console.log('📧 Requested Email (original):', email);
+    console.log('📧 Requested Email (normalized):', normalizedEmail);
+    
+    if (!normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required"
+      });
+    }
+
+    // Query user by normalized email (emails are stored in lowercase per User schema)
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    console.log('👤 User found:', user ? 'YES' : 'NO');
+    if (user) {
+      console.log('👤 User ID:', user._id);
+      console.log('👤 User Email (from DB):', user.email);
+      console.log('👤 Username:', user.username);
+    } else {
+      // Debug: Check if any users exist with similar email
+      const allUsers = await User.find().select('email username').limit(10);
+      console.log('📋 Sample emails in database (first 10):');
+      allUsers.forEach(u => {
+        console.log('   -', u.email, '(username:', u.username + ')');
+      });
+    }
+    console.log('═══════════════════════════════════════\n');
+
     if (!user) {
       // Return specific error for unregistered email
       return res.status(404).json({
@@ -1431,98 +1804,31 @@ exports.sendResetLink = async (req, res) => {
 
     // Create reset token
     const token = jwt.sign({ id: user._id }, process.env.SECRET, { expiresIn: "20m" });
-    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${token}`;
+    const resetUrl = `${envConfig.urls.clientUrl}/reset-password/${token}`;
 
-    // For testing purposes, log the reset URL instead of sending email
-    console.log('Password reset URL:', resetUrl);
-    console.log('Reset token:', token);
+    // Send password reset email using centralized email service
+    const { sendPasswordResetEmail } = require('../utils/securityNotificationService');
+    const emailResult = await sendPasswordResetEmail(user, resetUrl, token);
 
-    // Configure email transporter
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+    if (!emailResult || !emailResult.success) {
+      console.error('❌ Failed to send password reset email');
+      if (emailResult && emailResult.error) {
+        console.error('Error:', emailResult.error);
       }
-    });
-
-    const mailOptions = {
-      from: `"BHOKBHOJ" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Reset Your Password - BHOKBHOJ",
-      html: `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 40px 20px; border-radius: 16px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #14b8a6; font-size: 32px; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">🍽️ BHOKBHOJ</h1>
-            <p style="color: #0f766e; font-size: 14px; margin: 5px 0 0 0;">Delicious Food, Delivered Fresh</p>
-          </div>
-          
-          <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-            <h2 style="color: #0f766e; font-size: 24px; margin-top: 0;">🔐 Password Reset Request</h2>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hello <strong>${user.fullname}</strong>,</p>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-              We received a request to reset the password for your BHOKBHOJ account. 
-              Click the button below to create a new password:
-            </p>
-            
-            <div style="text-align: center; margin: 35px 0;">
-              <a href="${resetUrl}" 
-                 style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); 
-                        color: white; 
-                        padding: 14px 40px; 
-                        text-decoration: none; 
-                        border-radius: 10px; 
-                        font-weight: bold;
-                        font-size: 16px;
-                        display: inline-block;
-                        box-shadow: 0 4px 12px rgba(20, 184, 166, 0.4);">
-                🔑 Reset My Password
-              </a>
-            </div>
-            
-            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 25px 0;">
-              <p style="color: #92400e; margin: 0; font-size: 14px;">
-                ⏰ <strong>Important:</strong> This link will expire in 20 minutes for security reasons.
-              </p>
-            </div>
-            
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 25px;">
-              If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
-            </p>
-            
-            <div style="border-top: 2px solid #e5e7eb; margin-top: 30px; padding-top: 20px;">
-              <p style="color: #374151; font-size: 14px; margin: 0;">
-                Best regards,<br>
-                <strong style="color: #14b8a6;">The BHOKBHOJ Team</strong> 🍴
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px;">
-            <p style="color: #6b7280; font-size: 12px; margin: 5px 0;">
-              © ${new Date().getFullYear()} BHOKBHOJ. All rights reserved.
-            </p>
-            <p style="color: #9ca3af; font-size: 11px; margin: 5px 0;">
-              This is an automated email. Please do not reply to this message.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error('Email error:', err);
-        return res.status(500).json({
-          success: false,
-          message: "Failed to send reset email. Please try again."
-        });
-      }
-      console.log('Email sent:', info.response);
-      return res.status(200).json({
-        success: true,
-        message: "If an account with this email exists, you will receive a password reset link."
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send reset email. Please try again later."
       });
+    }
+
+    // Log success (for Ethereal, preview URL is logged in the service)
+    if (emailResult.isEthereal && emailResult.previewUrl) {
+      console.log('📧 Password reset email sent (Ethereal - Preview URL logged above)');
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "If an account with this email exists, you will receive a password reset link."
     });
 
   } catch (err) {
@@ -1548,9 +1854,56 @@ exports.resetPassword = async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, process.env.SECRET);
+    const user = await User.findById(decoded.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Check if new password is the same as current password
+    const isSamePassword = await bcrypt.compare(password, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from your current password"
+      });
+    }
+
+    // Check password reuse (check against password history)
+    if (user.checkPasswordReuse) {
+      const isReused = await user.checkPasswordReuse(password);
+      if (isReused) {
+        return res.status(400).json({
+          success: false,
+          message: "You cannot reuse a previous password. Please choose a different password."
+        });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await User.findByIdAndUpdate(decoded.id, { password: hashedPassword });
+    // Get current password hash for history
+    const currentPasswordHash = user.password;
+
+    // Update password and track history
+    // Keep last 3 passwords in history
+    const passwordHistory = user.passwordHistory || [];
+    passwordHistory.push(currentPasswordHash);
+    
+    // Keep only last 3 passwords
+    const updatedHistory = passwordHistory.slice(-3);
+
+    await User.findByIdAndUpdate(decoded.id, {
+      password: hashedPassword,
+      passwordHistory: updatedHistory,
+      passwordChangedAt: new Date(),
+      passwordExpiresAt: new Date(Date.now() + (parseInt(process.env.PASSWORD_EXPIRY_DAYS) || 90) * 24 * 60 * 60 * 1000),
+      loginAttempts: 0, // Reset login attempts on password reset
+      accountLockedUntil: null // Unlock account
+    });
 
     return res.status(200).json({
       success: true,
@@ -1559,9 +1912,17 @@ exports.resetPassword = async (req, res) => {
 
   } catch (err) {
     console.error('Reset password error:', err);
-    return res.status(400).json({
+    
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token. Please request a new password reset link."
+      });
+    }
+    
+    return res.status(500).json({
       success: false,
-      message: "Invalid or expired token"
+      message: "Server error. Please try again."
     });
   }
 };
@@ -1606,6 +1967,43 @@ exports.getCurrentUser = async (req, res) => {
   }
 };
 
+// ✅ XSRF Token: Get single user (alias for getCurrentUser)
+exports.getSingleUser = exports.getCurrentUser;
+
+// ✅ XSRF Token: Update user details (alias for updateUser)
+exports.updateUserDetails = exports.updateUser;
+
+// ✅ XSRF Token: Delete user account
+exports.deleteUser = async (req, res) => {
+  try {
+    // The user is already attached to req by the authenticateUser middleware
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated"
+      });
+    }
+
+    const userId = user._id;
+
+    // Delete user from database
+    await User.findByIdAndDelete(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "User account deleted successfully"
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while deleting user account"
+    });
+  }
+};
+
 // Change Password (for logged-in users with old password verification)
 exports.changePassword = async (req, res) => {
   // 🔍 BURP SUITE TESTING: Log change password request details
@@ -1614,7 +2012,7 @@ exports.changePassword = async (req, res) => {
   console.log('👤 User ID (from token):', req.user ? req.user._id : 'Not authenticated');
   console.log('👤 Username:', req.user ? req.user.username : 'Not authenticated');
   console.log('📧 Email:', req.user ? req.user.email : 'Not authenticated');
-  console.log('🔑 Old Password:', req.body.oldPassword ? '***PROVIDED***' : 'Not provided');
+  console.log('🔑 Current Password:', req.body.currentPassword ? '***PROVIDED***' : 'Not provided');
   console.log('🔑 New Password:', req.body.newPassword ? '***PROVIDED***' : 'Not provided');
   console.log('🎫 Authorization Token:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
   console.log('🌐 Origin:', req.headers.origin);
@@ -1622,20 +2020,31 @@ exports.changePassword = async (req, res) => {
   console.log('🕐 Timestamp:', new Date().toISOString());
   console.log('═══════════════════════════════════════\n');
 
-  const { oldPassword, newPassword } = req.body;
+  const { currentPassword, newPassword, confirmPassword } = req.body;
 
   // Validation
-  if (!oldPassword || !newPassword) {
+  if (!currentPassword || !newPassword || !confirmPassword) {
     return res.status(400).json({
       success: false,
-      message: "Both old password and new password are required"
+      message: "Current password, new password, and confirm password are required"
     });
   }
 
-  if (newPassword.length < 6) {
+  // Check if new password matches confirm password
+  if (newPassword !== confirmPassword) {
     return res.status(400).json({
       success: false,
-      message: "New password must be at least 6 characters long"
+      message: "New password and confirm password do not match"
+    });
+  }
+
+  // ✅ PASSWORD STRENGTH VALIDATION: Check password strength requirements
+  // Minimum 8 characters, at least one uppercase, one lowercase, one number, one special character
+  const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  if (!passwordStrengthRegex.test(newPassword)) {
+    return res.status(400).json({
+      success: false,
+      message: "Password too weak. Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)"
     });
   }
 
@@ -1651,93 +2060,60 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Verify old password
-    const isOldPasswordValid = await bcrypt.compare(oldPassword, user.password);
-    if (!isOldPasswordValid) {
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
       return res.status(403).json({
         success: false,
         message: "Current password is incorrect"
       });
     }
 
-    // Check if new password is same as old password
-    const isSamePassword = await bcrypt.compare(newPassword, user.password);
-    if (isSamePassword) {
+    // ✅ PASSWORD REUSE PREVENTION: Check if new password was used in last 3 passwords
+    const isPasswordReused = await user.checkPasswordReuse(newPassword);
+    if (isPasswordReused) {
       return res.status(400).json({
         success: false,
-        message: "New password must be different from the current password"
+        message: "New password cannot be same as your last 3 passwords"
       });
+    }
+
+    // ✅ PASSWORD REUSE PREVENTION: Add current password hash to password history
+    // Initialize passwordHistory if it doesn't exist
+    if (!user.passwordHistory) {
+      user.passwordHistory = [];
+    }
+    
+    // Add current password hash to history
+    user.passwordHistory.push(user.password);
+    
+    // Keep only last 3 passwords in history
+    if (user.passwordHistory.length > 3) {
+      user.passwordHistory = user.passwordHistory.slice(-3);
     }
 
     // Hash new password
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password
+    // ✅ PASSWORD EXPIRY: Update password and related fields
+    const expiryDays = parseInt(process.env.PASSWORD_EXPIRY_DAYS) || 90;
     user.password = hashedNewPassword;
+    user.passwordChangedAt = new Date();
+    user.passwordExpiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
     await user.save();
 
-    // Send confirmation email
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
+    // ✅ SECURITY NOTIFICATION: Send password change notification
+    const { sendPasswordChangeNotification } = require('../utils/securityNotificationService');
+    const ip = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || 'Unknown';
+    const deviceInfo = req.get('user-agent') || 'Unknown Device';
+    
+    sendPasswordChangeNotification(user, {
+      ipAddress: ip,
+      location: 'Unknown Location', // Can be enhanced with geolocation service
+      timestamp: new Date().toISOString(),
+      deviceInfo: deviceInfo
+    }).catch(err => console.error('Failed to send password change notification:', err));
 
-    const mailOptions = {
-      from: `"BHOKBHOJ" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "Password Changed Successfully - BHOKBHOJ",
-      html: `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 40px 20px; border-radius: 16px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #14b8a6; font-size: 32px; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">🍽️ BHOKBHOJ</h1>
-            <p style="color: #0f766e; font-size: 14px; margin: 5px 0 0 0;">Delicious Food, Delivered Fresh</p>
-          </div>
-          
-          <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-            <h2 style="color: #0f766e; font-size: 24px; margin-top: 0;">✅ Password Changed Successfully</h2>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hello <strong>${user.fullname}</strong>,</p>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-              Your BHOKBHOJ account password has been changed successfully.
-            </p>
-            
-            <div style="background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; border-radius: 8px; margin: 25px 0;">
-              <p style="color: #065f46; margin: 0; font-size: 14px;">
-                🔒 <strong>Security Notice:</strong> If you did not make this change, please contact our support team immediately.
-              </p>
-            </div>
-            
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 25px;">
-              Changed on: <strong>${new Date().toLocaleString()}</strong>
-            </p>
-            
-            <div style="border-top: 2px solid #e5e7eb; margin-top: 30px; padding-top: 20px;">
-              <p style="color: #374151; font-size: 14px; margin: 0;">
-                Best regards,<br>
-                <strong style="color: #14b8a6;">The BHOKBHOJ Team</strong> 🍴
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px;">
-            <p style="color: #6b7280; font-size: 12px; margin: 5px 0;">
-              © ${new Date().getFullYear()} BHOKBHOJ. All rights reserved.
-            </p>
-          </div>
-        </div>
-      `
-    };
-
-    // Send email (don't wait for it)
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error('Email error:', err);
-      } else {
-        console.log('Password change confirmation email sent:', info.response);
-      }
-    });
 
     // 🔍 BURP SUITE TESTING: Log change password response
     console.log('\n✅ CHANGE PASSWORD RESPONSE SENT:');
@@ -1751,7 +2127,7 @@ exports.changePassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Password changed successfully"
+      message: `Password changed successfully. Your new password expires in ${expiryDays} days.`
     });
 
   } catch (err) {

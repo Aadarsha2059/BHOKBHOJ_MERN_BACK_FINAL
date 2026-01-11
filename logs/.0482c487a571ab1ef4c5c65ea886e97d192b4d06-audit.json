@@ -6,11 +6,6 @@
     "auditLog": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\.0482c487a571ab1ef4c5c65ea886e97d192b4d06-audit.json",
     "files": [
         {
-            "date": 1766833371657,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2025-12-27.log",
-            "hash": "f0f7dcaeda6bbacfed13a6dbf69fff69d3147abda1636e289a758ae904c4d649"
-        },
-        {
             "date": 1766995770957,
             "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2025-12-29.log",
             "hash": "038ecf6cc886fc7c0184bbc3d60ff041b99790d67145f7ad753beb222d380160"
@@ -34,6 +29,26 @@
             "date": 1767595674658,
             "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2026-01-05.log",
             "hash": "51db603c0b8054f9822e24dae14b6faad8e66ad234fe524c7fe40ed8c51c3c2f"
+        },
+        {
+            "date": 1767854797272,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2026-01-08.log",
+            "hash": "6179f688888542a8f1666a7cc7434497c52c157d2056dec1dbd32d0a1e6ff177"
+        },
+        {
+            "date": 1767929494454,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2026-01-09.log",
+            "hash": "7fb9f1b39699259c466657ad7a20034a5b2c8db8aa559bd3db9f934dc63c75ec"
+        },
+        {
+            "date": 1767983082501,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2026-01-10.log",
+            "hash": "119945ea78e9797782aed621d1989affd8a23cc67117155bd33ce2f9db4f3aaa"
+        },
+        {
+            "date": 1768098913116,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_MithoBites_FINAL\\Backend\\logs\\application-2026-01-11.log",
+            "hash": "1e7085d911ddb06edc6213e0ce3099556d51584e515c894a0e539518ceffb2d5"
         }
     ],
     "hashType": "sha256"

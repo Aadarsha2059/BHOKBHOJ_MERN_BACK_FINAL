@@ -119,7 +119,7 @@ function detectAttack(value, fieldName) {
         type: 'Cross-Site Scripting (XSS)',
         pattern: pattern.toString(),
         severity: 'HIGH',
-        description: '⚠️ SECURITY WARNING: Cross-Site Scripting (XSS) attack detected! This malicious input contains script tags or JavaScript code that could execute in user browsers, potentially stealing sensitive data or performing unauthorized actions. This input has been BLOCKED for security.'
+        description: 'XSS attack detected and blocked.'
       });
       // If XSS is detected, don't check for other attacks (XSS is the primary concern)
       // This prevents false positives
@@ -143,7 +143,7 @@ function detectAttack(value, fieldName) {
           type: 'SQL Injection',
           pattern: pattern.toString(),
           severity: 'HIGH',
-          description: '⚠️ SECURITY WARNING: SQL injection attempt detected! This malicious input contains SQL keywords or injection patterns that could manipulate database queries, potentially allowing unauthorized data access or modification. This input has been BLOCKED for security.'
+          description: 'SQL injection detected and blocked.'
         });
         break; // Only report once per attack type
       }
@@ -160,7 +160,7 @@ function detectAttack(value, fieldName) {
           type: 'Command Injection',
           pattern: pattern.toString(),
           severity: 'CRITICAL',
-          description: '🚨 CRITICAL SECURITY WARNING: Command injection detected! This malicious input contains shell commands and operators that could execute arbitrary commands on the server, potentially compromising the entire system. This input has been BLOCKED immediately.'
+          description: 'Command injection detected and blocked.'
         });
         break;
       }
@@ -296,24 +296,12 @@ const securityValidation = (req, res, next) => {
     
     return res.status(400).json({
       success: false,
-      message: `🚨 SECURITY ALERT: ${primaryAttack.type} detected and BLOCKED`,
+      message: `Security violation: ${primaryAttack.type} detected`,
       security: {
-        attackType: primaryAttack.type, // ✅ EXACT attack type detected
+        attackType: primaryAttack.type,
         severity: primaryAttack.severity,
-        violations: allAttacks.length,
-        highestSeverity: highestSeverity,
-        details: allAttacks.map(attack => ({
-          field: attack.field,
-          value: attack.value,
-          attackType: attack.attacks[0].type, // ✅ Only the exact attack type
-          severity: attack.attacks[0].severity,
-          description: attack.attacks[0].description,
-          warning: `⚠️ This ${attack.attacks[0].type} attempt has been BLOCKED. Your request has been logged for security monitoring.`
-        })),
-        timestamp: new Date().toISOString(),
-        endpoint: `${req.method} ${req.originalUrl}`,
-        action: 'BLOCKED',
-        note: 'This security violation has been logged. All malicious input is automatically rejected.'
+        field: allAttacks[0].field,
+        action: 'BLOCKED'
       }
     });
   }

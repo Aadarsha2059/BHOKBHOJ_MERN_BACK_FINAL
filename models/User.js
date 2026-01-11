@@ -99,10 +99,28 @@ const UserSchema = new mongoose.Schema(
     // 2FA OTP fields
     otp: {
       type: String,
+      default: null,
+      // Note: OTP is stored in plain text for verification purposes
+      // In production, ensure proper access controls to protect this field
+    },
+    otpCreatedAt: {
+      type: Date,
       default: null
     },
     otpExpiry: {
       type: Date,
+      default: null
+    },
+    otpExpiryFormatted: {
+      type: String,
+      default: null
+    },
+    otpTimeRemainingMinutes: {
+      type: Number,
+      default: null
+    },
+    otpRemainingTimeFormatted: {
+      type: String,
       default: null
     },
     otpVerified: {
@@ -122,13 +140,156 @@ const UserSchema = new mongoose.Schema(
     accountLockedUntil: {
       type: Date,
       default: null
+    },
+    // ✅ DEVICE TRACKING: Maximum allowed devices per user
+    maxDevices: {
+      type: Number,
+      default: 3,
+      min: 1,
+      max: 10
+    },
+    // ✅ PASSWORD REUSE PREVENTION: Store last 3 hashed passwords
+    passwordHistory: {
+      type: [String],
+      default: []
+    },
+    // ✅ PASSWORD EXPIRY: Track when password was last changed
+    passwordChangedAt: {
+      type: Date,
+      default: Date.now
+    },
+    // ✅ PASSWORD EXPIRY: Track when password expires (default 90 days from now)
+    passwordExpiresAt: {
+      type: Date,
+      default: function() {
+        const expiryDays = parseInt(process.env.PASSWORD_EXPIRY_DAYS) || 90;
+        return new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+      }
+    },
+    // ✅ EMAIL VERIFICATION: Token for email verification
+    emailVerificationToken: {
+      type: String,
+      default: null
+    },
+    emailVerificationTokenExpires: {
+      type: Date,
+      default: null
+    },
+    emailVerificationTokenExpiresFormatted: {
+      type: String,
+      default: null
+    },
+    isEmailVerified: {
+      type: Boolean,
+      default: false
     }
   },
   {
     timestamps: true,
-    toJSON: { getters: true },
-    toObject: { getters: true }
+    toJSON: { getters: true, virtuals: true },
+    toObject: { getters: true, virtuals: true }
   }
 );
+
+// ✅ PASSWORD REUSE PREVENTION: Method to check if new password was used in last 3 passwords
+UserSchema.methods.checkPasswordReuse = async function(newPassword) {
+  const bcrypt = require('bcrypt');
+  
+  // If no password history, allow the password
+  if (!this.passwordHistory || this.passwordHistory.length === 0) {
+    return false; // No reuse detected
+  }
+  
+  // Check new password against all passwords in history
+  for (const oldPasswordHash of this.passwordHistory) {
+    const isMatch = await bcrypt.compare(newPassword, oldPasswordHash);
+    if (isMatch) {
+      return true; // Password reuse detected
+    }
+  }
+  
+  return false; // No reuse detected
+};
+
+// ✅ PASSWORD EXPIRY: Method to check if password has expired
+UserSchema.methods.isPasswordExpired = function() {
+  if (!this.passwordExpiresAt) {
+    return false; // No expiry set, consider as not expired
+  }
+  return this.passwordExpiresAt < new Date();
+};
+
+// ✅ PASSWORD EXPIRY: Method to check if password needs expiry warning (expires within 7 days)
+UserSchema.methods.needsExpiryWarning = function() {
+  if (!this.passwordExpiresAt) {
+    return false; // No expiry set, no warning needed
+  }
+  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return this.passwordExpiresAt <= sevenDaysFromNow && this.passwordExpiresAt > new Date();
+};
+
+// ✅ OTP EXPIRY: Method to check if OTP is expired
+UserSchema.methods.isOTPExpired = function() {
+  if (!this.otpExpiry) {
+    return true; // No expiry set, consider as expired
+  }
+  return new Date() > this.otpExpiry;
+};
+
+// ✅ OTP EXPIRY: Method to get remaining time in minutes
+UserSchema.methods.getOTPRemainingMinutes = function() {
+  if (!this.otpExpiry) {
+    return 0;
+  }
+  const now = new Date();
+  const expiry = new Date(this.otpExpiry);
+  if (now >= expiry) {
+    return 0; // Already expired
+  }
+  const diffMs = expiry - now;
+  return Math.ceil(diffMs / (1000 * 60)); // Convert to minutes
+};
+
+// ✅ OTP EXPIRY: Virtual field for formatted OTP status (for display purposes)
+UserSchema.virtual('otpStatusInfo').get(function() {
+  if (!this.otp) {
+    return null;
+  }
+  const now = new Date();
+  const isExpired = !this.otpExpiry || now > this.otpExpiry;
+  const remainingMinutes = this.getOTPRemainingMinutes ? this.getOTPRemainingMinutes() : 0;
+  
+  return {
+    hasOTP: true,
+    isExpired: isExpired,
+    createdAt: this.otpCreatedAt ? this.otpCreatedAt.toISOString() : null,
+    expiresAt: this.otpExpiry ? this.otpExpiry.toISOString() : null,
+    expiresAtFormatted: this.otpExpiryFormatted || (this.otpExpiry ? this.otpExpiry.toISOString() : null),
+    remainingMinutes: remainingMinutes,
+    verified: this.otpVerified || false
+  };
+});
+
+// ✅ EMAIL VERIFICATION: Method to check if email verification token is expired
+UserSchema.methods.isEmailVerificationTokenExpired = function() {
+  if (!this.emailVerificationTokenExpires) {
+    return true; // No expiry set, consider as expired
+  }
+  return new Date() > this.emailVerificationTokenExpires;
+};
+
+// ✅ EMAIL VERIFICATION: Method to get remaining time in hours
+UserSchema.methods.getEmailVerificationTokenRemainingHours = function() {
+  if (!this.emailVerificationTokenExpires) {
+    return 0;
+  }
+  const now = new Date();
+  const expiry = new Date(this.emailVerificationTokenExpires);
+  if (now >= expiry) {
+    return 0; // Already expired
+  }
+  const diffMs = expiry - now;
+  return Math.ceil(diffMs / (1000 * 60 * 60)); // Convert to hours
+};
 
 module.exports = mongoose.model("User", UserSchema);

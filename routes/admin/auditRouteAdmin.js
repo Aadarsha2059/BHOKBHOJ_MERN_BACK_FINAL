@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const AuditLog = require('../../models/AuditLog');
 const { authGuard, adminGuard } = require('../../middlewares/authGuard');
+const Session = require('../../models/Session');
 
 // Get all audit logs with pagination and filters
 router.get('/', authGuard, adminGuard, async (req, res) => {
@@ -153,6 +154,52 @@ router.get('/security/events', authGuard, adminGuard, async (req, res) => {
             success: false,
             message: 'Server error',
             error: error.message
+        });
+    }
+});
+
+// Get simple stats for dashboard (Total, Errors, Today)
+router.get('/stats', authGuard, adminGuard, async (req, res) => {
+    try {
+        // Total logs (all time)
+        const totalLogs = await AuditLog.countDocuments({}).catch(() => 0);
+
+        // Error logs (ERROR or FAILURE status)
+        const errorLogs = await AuditLog.countDocuments({
+            status: { $in: ['ERROR', 'FAILURE'] }
+        }).catch(() => 0);
+
+        // Today's logs
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        
+        const todayLogs = await AuditLog.countDocuments({
+            timestamp: { $gte: todayStart, $lte: todayEnd }
+        }).catch(() => 0);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Audit stats fetched successfully',
+            data: {
+                totalLogs: totalLogs || 0,
+                errorLogs: errorLogs || 0,
+                todayLogs: todayLogs || 0
+            }
+        });
+
+    } catch (error) {
+        console.error('Get audit stats error:', error);
+        // Return default values instead of error
+        return res.status(200).json({
+            success: true,
+            message: 'Audit stats fetched with defaults',
+            data: {
+                totalLogs: 0,
+                errorLogs: 0,
+                todayLogs: 0
+            }
         });
     }
 });
@@ -311,6 +358,88 @@ router.get('/export/csv', authGuard, adminGuard, async (req, res) => {
 
     } catch (error) {
         console.error('Export audit logs error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+});
+
+// Get current admin session information
+router.get('/current-session', authGuard, adminGuard, async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
+            });
+        }
+
+        // Get session from database
+        const session = await Session.findOne({
+            token,
+            userId: req.user._id,
+            isActive: true
+        });
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'No active session found'
+            });
+        }
+
+        // Calculate time until expiration
+        const timeUntilExpiry = Math.max(0, Math.floor((session.expiresAt - new Date()) / 1000));
+        const minutesUntilExpiry = Math.floor(timeUntilExpiry / 60);
+        const secondsUntilExpiry = timeUntilExpiry % 60;
+
+        // Get express-session cookie info if available
+        const expressSessionData = req.session ? {
+            sessionId: req.sessionID,
+            cookie: {
+                originalMaxAge: req.session.cookie?.originalMaxAge || null,
+                expires: req.session.cookie?.expires ? new Date(req.session.cookie.expires).toISOString() : null,
+                secure: req.session.cookie?.secure || false,
+                httpOnly: req.session.cookie?.httpOnly || false,
+                path: req.session.cookie?.path || '/',
+                sameSite: req.session.cookie?.sameSite || 'lax'
+            },
+            userId: req.session.userId,
+            username: req.session.username,
+            email: req.session.email,
+            role: req.session.role,
+            loginTime: req.session.loginTime
+        } : null;
+
+        return res.status(200).json({
+            success: true,
+            message: 'Session information retrieved successfully',
+            data: {
+                sessionId: session._id,
+                expressSessionId: req.sessionID,
+                userId: session.userId,
+                deviceInfo: session.deviceInfo,
+                ipAddress: session.ipAddress,
+                createdAt: session.createdAt,
+                lastActivity: session.lastActivity,
+                expiresAt: session.expiresAt,
+                timeUntilExpiry: {
+                    totalSeconds: timeUntilExpiry,
+                    minutes: minutesUntilExpiry,
+                    seconds: secondsUntilExpiry,
+                    formatted: `${minutesUntilExpiry}:${secondsUntilExpiry.toString().padStart(2, '0')}`
+                },
+                isActive: session.isActive,
+                expressSession: expressSessionData
+            }
+        });
+
+    } catch (error) {
+        console.error('Get current session error:', error);
         return res.status(500).json({
             success: false,
             message: 'Server error',

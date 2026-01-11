@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Handling Test - BHOKBHOJ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 32px;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .test-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .test-card h3 {
+            color: #14b8a6;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .test-card p {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #14b8a6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0d9488;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        .response-area {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .response-area h2 {
+            color: #14b8a6;
+            margin-bottom: 15px;
+        }
+        .response-content {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .loading {
+            color: #14b8a6;
+            font-style: italic;
+        }
+        .success {
+            color: #10b981;
+        }
+        .error {
+            color: #ef4444;
+        }
+        .status-code {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .status-2xx {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-4xx {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-5xx {
+            background: #fef3c7;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Error Handling Test - BHOKBHOJ</h1>
+        
+        <div class="test-grid">
+            <div class="test-card">
+                <h3>404 Not Found</h3>
+                <p>Test 404 error response</p>
+                <button onclick="testError('/api/test/errors/not-found', '404')">Test 404</button>
+            </div>
+
+            <div class="test-card">
+                <h3>400 Validation Error</h3>
+                <p>Test validation error with field messages</p>
+                <button onclick="testError('/api/test/errors/validation-error', '400')">Test Validation</button>
+            </div>
+
+            <div class="test-card">
+                <h3>401 Unauthorized</h3>
+                <p>Test unauthorized access error</p>
+                <button onclick="testError('/api/test/errors/unauthorized', '401')">Test Unauthorized</button>
+            </div>
+
+            <div class="test-card">
+                <h3>403 Forbidden</h3>
+                <p>Test forbidden access error</p>
+                <button onclick="testError('/api/test/errors/forbidden', '403')">Test Forbidden</button>
+            </div>
+
+            <div class="test-card">
+                <h3>409 Conflict</h3>
+                <p>Test conflict error (duplicate entry)</p>
+                <button onclick="testError('/api/test/errors/conflict', '409')">Test Conflict</button>
+            </div>
+
+            <div class="test-card">
+                <h3>500 Internal Error</h3>
+                <p>Test internal server error</p>
+                <button onclick="testError('/api/test/errors/internal-error', '500')">Test 500</button>
+            </div>
+
+            <div class="test-card">
+                <h3>Mongoose Validation</h3>
+                <p>Test auto-converted Mongoose error</p>
+                <button onclick="testError('/api/test/errors/mongoose-validation', 'Mongoose')">Test Mongoose</button>
+            </div>
+
+            <div class="test-card">
+                <h3>JWT Token Error</h3>
+                <p>Test JWT token error</p>
+                <button onclick="testError('/api/test/errors/jwt-error', 'JWT')">Test JWT</button>
+            </div>
+
+            <div class="test-card">
+                <h3>Duplicate Key Error</h3>
+                <p>Test MongoDB duplicate key error</p>
+                <button onclick="testError('/api/test/errors/duplicate-error', 'Duplicate')">Test Duplicate</button>
+            </div>
+
+            <div class="test-card">
+                <h3>Custom Dynamic Error</h3>
+                <p>Test with custom status and message</p>
+                <button onclick="testDynamicError()">Test Dynamic</button>
+            </div>
+
+            <div class="test-card">
+                <h3>POST Error Test</h3>
+                <p>Test error with POST request</p>
+                <button onclick="testPostError()">Test POST</button>
+            </div>
+
+            <div class="test-card">
+                <h3>Environment Test</h3>
+                <p>Compare dev vs prod error details</p>
+                <button onclick="testError('/api/test/errors/environment-test', 'Environment')">Test Environment</button>
+            </div>
+        </div>
+
+        <div class="response-area">
+            <h2>Response:</h2>
+            <div id="response" class="response-content">
+                <span class="loading">Click any test button above to see the response...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin; // Automatically uses current server
+
+        async function testError(endpoint, testName) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = `<span class="loading">🔄 Testing ${testName}...</span>`;
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE_URL}${endpoint}`);
+                const responseTime = Date.now() - startTime;
+                const data = await response.json();
+                
+                const statusClass = response.status >= 500 ? 'status-5xx' : 
+                                   response.status >= 400 ? 'status-4xx' : 'status-2xx';
+                
+                let html = `<div class="${response.ok ? 'success' : 'error'}">`;
+                html += `<div><span class="status-code ${statusClass}">${response.status}</span>`;
+                html += `<strong>${response.statusText}</strong> (${responseTime}ms)</div>`;
+                html += `<div style="margin-top: 15px;"><strong>Response Body:</strong></div>`;
+                html += `<pre style="margin-top: 10px;">${JSON.stringify(data, null, 2)}</pre>`;
+                html += `</div>`;
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">❌ Error: ${error.message}<br>Make sure your server is running on ${API_BASE_URL}</div>`;
+            }
+        }
+
+        async function testDynamicError() {
+            const statusCode = prompt('Enter status code (e.g., 422):', '422');
+            const message = prompt('Enter error message:', 'Custom error message');
+            const resource = prompt('Enter resource name:', 'Order');
+            
+            if (!statusCode || !message) {
+                alert('Please provide status code and message');
+                return;
+            }
+            
+            const endpoint = `/api/test/errors/dynamic-error?statusCode=${statusCode}&message=${encodeURIComponent(message)}&resource=${encodeURIComponent(resource)}`;
+            await testError(endpoint, 'Dynamic Error');
+        }
+
+        async function testPostError() {
+            const errorType = prompt('Enter error type (notFound, validation, unauthorized, internal):', 'validation');
+            
+            if (!errorType) {
+                alert('Please provide error type');
+                return;
+            }
+            
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = `<span class="loading">🔄 Testing POST Error...</span>`;
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE_URL}/api/test/errors/test-post-error`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        errorType: errorType,
+                        message: `Custom ${errorType} error message`
+                    })
+                });
+                const responseTime = Date.now() - startTime;
+                const data = await response.json();
+                
+                const statusClass = response.status >= 500 ? 'status-5xx' : 
+                                   response.status >= 400 ? 'status-4xx' : 'status-2xx';
+                
+                let html = `<div class="${response.ok ? 'success' : 'error'}">`;
+                html += `<div><span class="status-code ${statusClass}">${response.status}</span>`;
+                html += `<strong>${response.statusText}</strong> (${responseTime}ms)</div>`;
+                html += `<div style="margin-top: 15px;"><strong>POST Request Body:</strong></div>`;
+                html += `<pre style="margin-top: 5px; background: #f3f4f6; padding: 10px; border-radius: 4px;">${JSON.stringify({ errorType: errorType, message: `Custom ${errorType} error message` }, null, 2)}</pre>`;
+                html += `<div style="margin-top: 15px;"><strong>Response Body:</strong></div>`;
+                html += `<pre style="margin-top: 10px;">${JSON.stringify(data, null, 2)}</pre>`;
+                html += `</div>`;
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">❌ Error: ${error.message}<br>Make sure your server is running on ${API_BASE_URL}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

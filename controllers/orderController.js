@@ -4,7 +4,7 @@ const Product = require("../models/Product");
 const User = require("../models/User");
 const PaymentMethod = require("../models/paymentmethod");
 const { transformProductData } = require("../utils/imageUtils");
-const nodemailer = require("nodemailer");
+const { sendOrderConfirmationEmail } = require("../utils/orderEmailService");
 const mongoose = require("mongoose");
 
 // Create order from cart
@@ -243,16 +243,12 @@ exports.createOrder = async (req, res) => {
                     console.log('🚨 SECURITY ALERT: Invalid price (0 or negative)!');
                     return res.status(400).json({
                         success: false,
-                        message: "Invalid price. Price cannot be 0 or negative.",
+                        message: "Security violation: Price Manipulation Attack detected",
                         security: {
                             attackType: "Price Manipulation Attack",
                             severity: "CRITICAL",
-                            description: `Attempted to set invalid price (${requestPrice} NPR). Price must be a positive number and cannot be 0 or negative.`,
-                            action: "BLOCKED",
-                            requestedPrice: requestPrice,
-                            actualDatabasePrice: actualPrice,
-                            productId: productId,
-                            productName: requestItem.productName || 'Unknown'
+                            field: "price",
+                            action: "BLOCKED"
                         }
                     });
                 }
@@ -261,17 +257,12 @@ exports.createOrder = async (req, res) => {
                     console.log('🚨 SECURITY ALERT: Price mismatch!');
                     return res.status(400).json({
                         success: false,
-                        message: "Price mismatch detected. Price cannot be modified.",
+                        message: "Security violation: Price Manipulation Attack detected",
                         security: {
                             attackType: "Price Manipulation Attack",
                             severity: "CRITICAL",
-                            description: `Attempted to modify price from ${actualPrice} NPR to ${requestPrice} NPR. Price manipulation is not allowed. Prices are always retrieved from the product catalog.`,
-                            action: "BLOCKED",
-                            requestedPrice: requestPrice,
-                            actualDatabasePrice: actualPrice,
-                            priceDifference: Math.abs(actualPrice - requestPrice),
-                            productId: productId,
-                            productName: requestItem.productName || 'Unknown'
+                            field: "price",
+                            action: "BLOCKED"
                         }
                     });
                 }
@@ -286,15 +277,12 @@ exports.createOrder = async (req, res) => {
                 console.log('🚨 SECURITY ALERT: Total price mismatch!');
                 return res.status(400).json({
                     success: false,
-                    message: "Total price mismatch detected. Total price cannot be manipulated.",
+                    message: "Security violation: Total Price Manipulation Attack detected",
                     security: {
                         attackType: "Total Price Manipulation Attack",
                         severity: "CRITICAL",
-                        description: `Attempted to modify total price. Requested: ${cartDetails.totalPrice} NPR, Calculated: ${calculatedTotal} NPR. Total price is automatically calculated and cannot be modified.`,
-                        action: "BLOCKED",
-                        requestedTotal: cartDetails.totalPrice,
-                        calculatedTotal: calculatedTotal,
-                        difference: Math.abs(cartDetails.totalPrice - calculatedTotal)
+                        field: "totalPrice",
+                        action: "BLOCKED"
                     }
                 });
             }
@@ -352,7 +340,7 @@ exports.createOrder = async (req, res) => {
                     security: {
                         attackType: "Price Validation Failure",
                         severity: "CRITICAL",
-                        description: "Product price validation failed. This may indicate a price manipulation attempt or data corruption.",
+                        field: "price",
                         action: "BLOCKED"
                     }
                 });
@@ -368,7 +356,7 @@ exports.createOrder = async (req, res) => {
                         security: {
                             attackType: "Price Range Validation",
                             severity: "HIGH",
-                            description: "Product price is outside valid range (0.01 to 100000).",
+                            field: "price",
                             action: "BLOCKED"
                         }
                     });
@@ -469,103 +457,18 @@ exports.createOrder = async (req, res) => {
 
         await order.populate({
             path: 'items.productId',
-            select: 'name price filepath'
+            select: 'name price filepath',
+            populate: {
+                path: 'restaurantId',
+                select: 'name location'
+            }
         });
 
-        // ✅ PERFORMANCE FIX: Send order confirmation email asynchronously (non-blocking)
+        // Send order confirmation email asynchronously (non-blocking)
         // Email is sent in background - response returns immediately
-        setImmediate(() => {
+        setImmediate(async () => {
             try {
-                const transporter = nodemailer.createTransport({
-                    service: "gmail",
-                    auth: {
-                        user: process.env.EMAIL_USER,
-                        pass: process.env.EMAIL_PASS
-                    }
-                });
-            // Format currency helper
-            const formatNPR = (amount) => `NPR ${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            // Build base URL for images
-            const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
-            // Order confirmation email with product images
-            const orderConfirmationHtml = `
-                <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:650px;margin:32px auto;background:#fff;border-radius:18px;box-shadow:0 6px 32px rgba(20,184,166,0.2),0 2px 12px rgba(13,148,136,0.15);overflow:hidden;">
-                    <div style="background:linear-gradient(90deg,#14b8a6 0%,#0d9488 60%,#FFA500 100%);color:#fff;padding:32px 40px 18px 40px;text-align:center;">
-                        <h1 style="margin:0;font-size:2.3em;letter-spacing:1.2px;font-weight:900;text-shadow:0 2px 12px rgba(15,118,110,0.3);">🍽️ BHOKBHOJ</h1>
-                        <div style="font-size:1.18em;opacity:0.97;font-weight:600;letter-spacing:0.5px;">Order Confirmation</div>
-                    </div>
-                    <div style="padding:32px 40px 18px 40px;">
-                        <div style="font-size:1.25em;font-weight:700;margin-bottom:18px;">Thank you for your order, ${user.fullname || user.username}!</div>
-                        <div style="font-size:1.13em;font-weight:600;margin-bottom:10px;">Your order <b>#${order._id}</b> has been placed successfully.</div>
-                        <h3 style="margin:18px 0 10px 0;font-size:1.18em;color:#5a3fd7;letter-spacing:0.5px;">Order Summary:</h3>
-                        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:1.08em;box-shadow:0 2px 8px #5a3fd71a;">
-                            <thead>
-                                <tr style="background:linear-gradient(90deg,#5a3fd7 0%,#7c5dfa 100%);color:#fff;">
-                                    <th style='padding:10px 12px;border:1px solid #e9eaf3;'>Image</th>
-                                    <th style='padding:10px 12px;border:1px solid #e9eaf3;'>Product</th>
-                                    <th style='padding:10px 12px;border:1px solid #e9eaf3;'>Qty</th>
-                                    <th style='padding:10px 12px;border:1px solid #e9eaf3;'>Price</th>
-                                    <th style='padding:10px 12px;border:1px solid #e9eaf3;'>Restaurant</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${order.items.map(item => {
-                                    const productImage = item.productId?.filepath ? `${baseUrl}/uploads/${item.productId.filepath.replace(/^uploads\//, '')}` : '';
-                                    return `
-                                    <tr style="background:#f4f6fb;">
-                                        <td style="padding:10px 12px;border:1px solid #e9eaf3;text-align:center;">
-                                            ${productImage ? `<img src="${productImage}" alt="${item.productName}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;"/>` : '<span style="color:#999;">No image</span>'}
-                                        </td>
-                                        <td style="padding:10px 12px;border:1px solid #e9eaf3;">${item.productName || item.productId?.name}</td>
-                                        <td style="padding:10px 12px;border:1px solid #e9eaf3;text-align:center;">${item.quantity}</td>
-                                        <td style="padding:10px 12px;border:1px solid #e9eaf3;text-align:right;">${formatNPR(item.price)}</td>
-                                        <td style="padding:10px 12px;border:1px solid #e9eaf3;">${item.restaurantName || item.productId?.restaurantId?.name || ''}</td>
-                                    </tr>
-                                `}).join("")}
-                            </tbody>
-                        </table>
-                        <div style="display:flex;justify-content:flex-end;margin-top:22px;">
-                            <table style="min-width:320px;font-size:1.13em;">
-                                <tr>
-                                    <td style="padding:8px 0 8px 0;">Subtotal:</td>
-                                    <td style="padding:8px 0 8px 0;text-align:right;">${formatNPR(order.subtotal)}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:8px 0 8px 0;">Delivery Fee:</td>
-                                    <td style="padding:8px 0 8px 0;text-align:right;">${formatNPR(order.deliveryFee)}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:8px 0 8px 0;">Tax (5%):</td>
-                                    <td style="padding:8px 0 8px 0;text-align:right;">${formatNPR(order.tax)}</td>
-                                </tr>
-                                <tr style="font-weight:bold;border-top:2px solid #e9eaf3;">
-                                    <td style="padding:12px 0 12px 0;font-size:1.15em;">Total:</td>
-                                    <td style="padding:12px 0 12px 0;text-align:right;font-size:1.15em;">${formatNPR(order.totalAmount)}</td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style="margin-top:18px;font-size:1.13em;"><b>Delivery Address:</b> ${order.deliveryAddress?.street || ''}</div>
-                        <div style="margin-top:8px;font-size:1.13em;"><b>Estimated Delivery Time:</b> ${order.estimatedDeliveryTime ? new Date(order.estimatedDeliveryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</div>
-                        <div style="margin-top:32px;text-align:center;color:#14b8a6;font-size:1.08em;font-weight:600;">
-                            If you have any questions, contact us at <a href='mailto:${process.env.EMAIL_USER}' style='color:#FFA500;text-decoration:none;'>${process.env.EMAIL_USER}</a>.<br/>
-                            <span style="font-size:0.98em;color:#888;font-weight:400;">&copy; ${new Date().getFullYear()} BHOKBHOJ Nepal</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            const mailOptions = {
-                from: `"BHOKBHOJ" <${process.env.EMAIL_USER}>`,
-                to: user.email,
-                subject: "Order Confirmation - BHOKBHOJ",
-                html: orderConfirmationHtml
-            };
-                transporter.sendMail(mailOptions, (err, info) => {
-                    if (err) {
-                        console.error('Order email error:', err);
-                    } else {
-                        console.log('Order confirmation email sent:', info.response);
-                    }
-                });
+                await sendOrderConfirmationEmail(user, order);
             } catch (emailErr) {
                 console.error('Order confirmation email failed:', emailErr);
             }
@@ -699,21 +602,36 @@ exports.getUserOrders = async (req, res) => {
             });
         }
         
+        // ✅ FIX: Ensure userId is properly converted to ObjectId for database query
         const userId = req.user._id;
-        console.log("User ID:", userId);
+        const userIdObjectId = mongoose.Types.ObjectId.isValid(userId) 
+            ? new mongoose.Types.ObjectId(userId) 
+            : userId;
+        
+        console.log("User ID (original):", userId);
+        console.log("User ID (ObjectId):", userIdObjectId);
+        console.log("User ID type:", typeof userId);
         console.log("Username:", req.user.username || 'N/A');
         
         const { page = 1, limit = 10, status = "" } = req.query;
         const skip = (page - 1) * limit;
         console.log("Query params:", { page, limit, status, skip });
 
-        let filter = { userId };
-        if (status) {
-            filter.orderStatus = status;
+        // ✅ FIX: Use ObjectId for consistent database query
+        let filter = { userId: userIdObjectId };
+        if (status && status.trim() !== "") {
+            filter.orderStatus = status.trim();
         }
-        console.log("Filter:", filter);
+        console.log("Filter:", JSON.stringify(filter));
+        
+        // ✅ FIX: Add debug logging to check if orders exist in database
+        const totalOrdersInDb = await Order.countDocuments({});
+        const userOrdersCount = await Order.countDocuments({ userId: userIdObjectId });
+        console.log("Debug - Total orders in DB:", totalOrdersInDb);
+        console.log("Debug - Orders for this user:", userOrdersCount);
 
         // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries
+        // ✅ FIX: Use userIdObjectId consistently in queries
         const [orders, total] = await Promise.all([
             Order.find(filter)
                 .populate({
@@ -726,13 +644,14 @@ exports.getUserOrders = async (req, res) => {
                 })
                 .select('userId items subtotal deliveryFee tax totalAmount deliveryAddress deliveryInstructions paymentMethod orderStatus estimatedDeliveryTime orderDate createdAt')
                 .sort({ createdAt: -1 })
-                .limit(limit)
-                .skip(skip)
+                .limit(Number(limit))
+                .skip(Number(skip))
                 .lean(), // ✅ Use lean() for read-only queries (much faster)
             Order.countDocuments(filter)
         ]);
 
         console.log("Orders found:", orders.length);
+        console.log("Orders sample (first order):", orders.length > 0 ? JSON.stringify(orders[0], null, 2) : "No orders found");
 
         // Transform orders with full image URLs (orders are already plain objects from lean())
         const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -788,14 +707,11 @@ exports.getUserOrders = async (req, res) => {
         console.error("Error details:", err);
         console.error("Error message:", err.message);
         console.error("Error stack:", err.stack);
+        console.error("User ID that caused error:", req.user?._id);
         return res.status(500).json({
             success: false,
             message: "Failed to fetch orders",
             error: process.env.NODE_ENV === 'development' ? err.message : undefined
-        });
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
         });
     }
 };
@@ -879,12 +795,17 @@ exports.cancelOrder = async (req, res) => {
         return res.status(200).json({ success: true, message: "Order cancelled successfully", data: transformedOrder });
     } catch (err) {
         console.error("Cancel Order Error:", err);
-        return res.status(500).json({ success: false, message: "Server error", error: err.message });
+        // (prevents information disclosure)
+        return res.status(500).json({ 
+            success: false, 
+            message: "Server error", 
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+        });
     }
 };
 
 // Update payment status
-// ✅ IDOR FIX: Only admins can update payment status
+
 exports.updatePaymentStatus = async (req, res) => {
     try {
         const orderId = req.params.id;
@@ -1137,34 +1058,73 @@ exports.markOrderReceived = async (req, res) => {
         }
     } catch (err) {
         console.error("Mark Order Received Error:", err);
-        return res.status(500).json({ success: false, message: "Server error", error: err.message });
+        // ✅ SECURED: Only expose error details in development mode (prevents information disclosure)
+        return res.status(500).json({ 
+            success: false, 
+            message: "Server error", 
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+        });
     }
 }; 
 
 // Get purchase trend for the last 7 days
 exports.getPurchaseTrend = async (req, res) => {
     try {
-        const userId = req.query.userId || req.user?._id;
-        if (!userId) {
-            return res.status(400).json({ success: false, message: 'User ID is required' });
+        const authenticatedUserId = req.user?._id;
+        if (!authenticatedUserId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Not authenticated'
+            });
         }
+
+        let targetUserId = authenticatedUserId.toString();
+        const requestedUserId = req.query.userId;
+
+        if (requestedUserId) {
+            if (!mongoose.Types.ObjectId.isValid(requestedUserId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid user ID format'
+                });
+            }
+
+            const isAdmin = req.user?.role === 'admin';
+
+            if (!isAdmin && requestedUserId !== targetUserId) {
+                console.log('IDOR ATTEMPT BLOCKED:', {
+                    authenticatedUserId: targetUserId,
+                    attemptedUserId: requestedUserId,
+                    userRole: req.user.role,
+                    ip: req.ip || req.headers['x-forwarded-for']
+                });
+
+                return res.status(403).json({
+                    success: false,
+                    message: 'Access denied. You can only view your own purchase trend.'
+                });
+            }
+
+            targetUserId = requestedUserId;
+        }
+
         // Calculate date 7 days ago
         const today = new Date();
         const startDate = new Date(today);
         startDate.setDate(today.getDate() - 6); // includes today
         startDate.setHours(0, 0, 0, 0);
 
-        // Aggregate orders by day (only received orders)
+        // ✅ SECURED: Aggregate orders by day (only received orders) for authorized user
         const trend = await Order.aggregate([
             { $match: {
-                userId: new mongoose.Types.ObjectId(userId),
+                userId: new mongoose.Types.ObjectId(targetUserId),
                 orderDate: { $gte: startDate },
                 orderStatus: 'received'
             }},
             { $unwind: "$items" },
             { $group: {
                 _id: { $dateToString: { format: "%Y-%m-%d", date: "$orderDate" } },
-                orderCount: { $addToSet: "$_id" }, // unique order IDs per day
+                orderCount: { $addToSet: "$_id" }, 
                 totalAmount: { $sum: "$totalAmount" },
                 itemsReceived: { $sum: "$items.quantity" }
             }},
@@ -1195,9 +1155,26 @@ exports.getPurchaseTrend = async (req, res) => {
         // (Already constructed in order: 6 days ago ... today)
         // But if not, sort just in case
         result.sort((a, b) => a.date.localeCompare(b.date));
-        return res.json({ success: true, data: result, yAxisMax: 10 });
+        
+        // ✅ SECURED: Return data with proper authorization context
+        return res.json({ 
+            success: true, 
+            data: result, 
+            yAxisMax: 10,
+            // Include metadata for admin users viewing other users' data
+            ...(req.user?.role === 'admin' && requestedUserId && requestedUserId !== authenticatedUserId.toString() ? {
+                metadata: {
+                    viewedUserId: targetUserId,
+                    viewedByAdmin: true
+                }
+            } : {})
+        });
     } catch (err) {
         console.error('Error in getPurchaseTrend:', err);
-        return res.status(500).json({ success: false, message: 'Server error' });
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Server error',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 }; 

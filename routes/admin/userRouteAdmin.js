@@ -9,23 +9,26 @@ const {
 } = require("../../controllers/admin/usermanagement");
 
 const { authGuard, adminGuard } = require("../../middlewares/authGuard");
-const validateUser = require("../../middlewares/validateUser");
+const validateRequest = require("../../middlewares/validateRequest");
+const { adminCreateUserSchema, updateProfileSchema, userIdParamSchema } = require("../../utils/validationSchemas");
 
-// ✅ SECURED: All routes require authentication + admin role
-// Create a new user
-router.post("/", authGuard, adminGuard, validateUser, createUser);
 
-// Get all users (protected route, admin only)
+
+router.post("/", authGuard, adminGuard, validateRequest(adminCreateUserSchema, 'body'), createUser);
+
+// Get all users 
 router.get("/", authGuard, adminGuard, getUsers);
 
-// Get a single user by ID
-router.get("/:id", authGuard, adminGuard, getOneUser);
+// Get a user by ID
+router.get("/:id", authGuard, adminGuard, validateRequest(userIdParamSchema, 'params'), getOneUser);
 
 // Update a user by ID
-router.put("/:id", authGuard, adminGuard, validateUser, updateOne);
+
+router.put("/:id", authGuard, adminGuard, validateRequest(userIdParamSchema, 'params'), validateRequest(updateProfileSchema, 'body'), updateOne);
 
 // Delete a user by ID
-router.delete("/:id", authGuard, adminGuard, deleteOne);
+
+router.delete("/:id", authGuard, adminGuard, validateRequest(userIdParamSchema, 'params'), deleteOne);
 
 module.exports = router;
 

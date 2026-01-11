@@ -1,5 +1,29 @@
 const Feedback = require('../models/Feedback');
 
+// Helper function to sanitize HTML and prevent XSS
+const sanitizeComment = (comment) => {
+  if (typeof comment !== 'string') return comment;
+  
+  // Remove script tags
+  let sanitized = comment.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  
+  // Remove event handlers
+  sanitized = sanitized.replace(/on\w+="[^"]*"/gi, '')
+                       .replace(/on\w+='[^']*'/gi, '')
+                       .replace(/on\w+=[^\s>]+/gi, '');
+  
+  // Remove javascript: protocol
+  sanitized = sanitized.replace(/javascript:/gi, '');
+  
+  // HTML entity encoding for remaining HTML tags
+  sanitized = sanitized.replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#x27;');
+  
+  return sanitized;
+};
+
 // POST /api/feedbacks
 exports.createFeedback = async (req, res) => {
   try {
@@ -21,10 +45,13 @@ exports.createFeedback = async (req, res) => {
       });
     }
     
+    // ✅ SECURITY: Additional sanitization layer for comment field (defense-in-depth)
+    const sanitizedComment = sanitizeComment(comment);
+    
     const feedback = new Feedback({
       userId,
       productId,
-      comment,
+      comment: sanitizedComment, // Use sanitized comment
       rating: rating || 5 // Default to 5 if not provided
     });
     

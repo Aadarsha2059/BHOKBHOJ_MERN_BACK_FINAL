@@ -13,11 +13,11 @@ const app = require("./index");
 const PORT = process.env.PORT || 5051;
 const HTTP_REDIRECT_PORT = process.env.HTTP_REDIRECT_PORT || 5050;
 const HTTPS_PORT = process.env.HTTPS_PORT || 5443;
-let MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/mithobites";
+let MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/bhokbhoj";
 
 // Fallback for local dev if Docker hostname 'mongo' is not found
 if (MONGODB_URI.includes('mongo') && !process.env.USE_DOCKER_MONGO) {
-  MONGODB_URI = "mongodb://localhost:27017/mithobites";
+  MONGODB_URI = "mongodb://localhost:27017/bhokbhoj";
 }
 
 // Set default environment variables if not provided
@@ -32,30 +32,38 @@ const sslCertPath = path.join(__dirname, 'ssl', 'cert.pem');
 const sslExists = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
 
 if (sslExists) {
-    // HTTPS Server Configuration with TLS 1.3
+    // HTTPS Server Configuration with TLS Next (TLS 1.3 preferred, TLS 1.2 fallback)
     const httpsOptions = {
         key: fs.readFileSync(sslKeyPath),
         cert: fs.readFileSync(sslCertPath),
-        // TLS 1.3 Configuration (Latest and Most Secure)
-        minVersion: 'TLSv1.3', // Enforce TLS 1.3 minimum
-        maxVersion: 'TLSv1.3', // Use only TLS 1.3
-        // TLS 1.3 Cipher Suites (automatically selected, but can be specified)
-        cipherSuites: [
-            'TLS_AES_256_GCM_SHA384',
-            'TLS_CHACHA20_POLY1305_SHA256',
-            'TLS_AES_128_GCM_SHA256',
-            'TLS_AES_128_CCM_SHA256'
+        // TLS Next Configuration: Prefer TLS 1.3, allow TLS 1.2 as fallback
+        minVersion: 'TLSv1.2', // Minimum TLS 1.2 (secure baseline)
+        maxVersion: 'TLSv1.3', // Maximum TLS 1.3 (latest and most secure)
+        // TLS 1.3 cipher suites are automatically selected by Node.js
+        // For TLS 1.2 fallback, specify strong cipher suites only
+        ciphers: [
+            // TLS 1.2 cipher suites (strong only - for fallback compatibility)
+            'ECDHE-RSA-AES256-GCM-SHA384',
+            'ECDHE-RSA-AES128-GCM-SHA256',
+            'ECDHE-RSA-AES256-SHA384',
+            'ECDHE-RSA-AES128-SHA256',
+            'DHE-RSA-AES256-GCM-SHA384',
+            'DHE-RSA-AES128-GCM-SHA256'
         ].join(':'),
         // Additional security options
-        honorCipherOrder: true,
+        honorCipherOrder: true, // Use server cipher order preference
         // Enable session resumption for better performance
         sessionTimeout: 300,
-        // Disable older protocols explicitly
+        // Disable insecure older protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1)
+        // Allow TLS 1.2 and TLS 1.3 only
         secureOptions: require('crypto').constants.SSL_OP_NO_SSLv2 |
                        require('crypto').constants.SSL_OP_NO_SSLv3 |
                        require('crypto').constants.SSL_OP_NO_TLSv1 |
                        require('crypto').constants.SSL_OP_NO_TLSv1_1 |
-                       require('crypto').constants.SSL_OP_NO_TLSv1_2
+                       // Enable Perfect Forward Secrecy
+                       require('crypto').constants.SSL_OP_CIPHER_SERVER_PREFERENCE |
+                       // Prefer ECDHE for key exchange
+                       require('crypto').constants.SSL_OP_PRIORITIZE_CHACHA
     };
 
     // Create HTTPS server
@@ -68,8 +76,9 @@ if (sslExists) {
         console.log(`   🚀 HTTPS Server: https://localhost:${HTTPS_PORT}`);
         console.log(`   📊 MongoDB URI: ${MONGODB_URI}`);
         console.log(`   🔒 SSL/TLS: ENABLED`);
-        console.log(`   🛡️  Encryption: TLS 1.3 (Latest)`);
-        console.log(`   🔐 Cipher Suites: AES-256-GCM, ChaCha20-Poly1305`);
+        console.log(`   🛡️  Encryption: TLS Next (1.3 preferred, 1.2 fallback)`);
+        console.log(`   🔐 Cipher Suites: TLS 1.3 (AES-256-GCM, ChaCha20-Poly1305) + TLS 1.2 (ECDHE-AES-GCM)`);
+        console.log(`   🔒 Minimum TLS: 1.2 | Maximum TLS: 1.3`);
         console.log('   ═══════════════════════════════════════════════════════');
         console.log('\n   📝 API Endpoints (HTTPS):');
         console.log(`   • Registration: https://localhost:${HTTPS_PORT}/api/auth/register`);

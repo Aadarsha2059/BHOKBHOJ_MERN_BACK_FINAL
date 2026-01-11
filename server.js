@@ -1,5 +1,14 @@
 require("dotenv").config()
-const app = require("./index")
+
+// Wrap app require in try-catch to catch initialization errors
+let app;
+try {
+    app = require("./index")
+} catch (error) {
+    console.error('❌ Failed to load app:', error.message);
+    console.error('Stack trace:', error.stack);
+    process.exit(1);
+}
 
 const PORT = process.env.PORT || 5050 // Port 5050 for frontend compatibility
 let MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/bhokbhoj";
@@ -11,6 +20,19 @@ if (MONGODB_URI.includes('mongo') && !process.env.USE_DOCKER_MONGO) {
 // Set default environment variables if not provided
 process.env.MONGODB_URI = MONGODB_URI
 process.env.SECRET = process.env.SECRET || "your-secret-key-here"
+
+// Add unhandled error handlers
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error.message);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise);
+    console.error('Reason:', reason);
+    process.exit(1);
+});
 
 app.listen(
     PORT,
@@ -27,4 +49,5 @@ app.listen(
     if (err.code === 'EADDRINUSE') {
         console.error(`Port ${PORT} is already in use. Please stop other servers or use a different port.`);
     }
+    process.exit(1);
 });

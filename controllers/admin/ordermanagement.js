@@ -1,4 +1,5 @@
 const Order = require("../../models/Order");
+const { decrypt } = require("../../utils/aesEncryption");
 
 exports.createOrder = async (req, res) => {
     const { productId, userId, quantity, price } = req.body;
@@ -58,6 +59,28 @@ exports.getOrders = async (req, res) => {
             filter.orderStatus = status;
         }
 
+        // Helper function to decrypt sensitive fields
+        const decryptField = (encryptedValue) => {
+            if (!encryptedValue) return null;
+            try {
+                if (typeof encryptedValue === 'string') {
+                    const trimmed = encryptedValue.trim();
+                    if (!trimmed.startsWith('{')) return encryptedValue;
+                    try {
+                        const parsed = JSON.parse(trimmed);
+                        if (parsed.encrypted && parsed.iv && (parsed.authTag || parsed.authtag)) {
+                            return decrypt(encryptedValue);
+                        }
+                    } catch (parseError) {
+                        return encryptedValue;
+                    }
+                }
+                return decrypt(encryptedValue);
+            } catch (error) {
+                return encryptedValue;
+            }
+        };
+
         // ✅ PERFORMANCE OPTIMIZED: Use lean() and parallel queries with population
         const [orders, total] = await Promise.all([
             Order.find(filter)
@@ -71,10 +94,21 @@ exports.getOrders = async (req, res) => {
             Order.countDocuments(filter)
         ]);
 
+        // ✅ DECRYPT FOR ADMIN PANEL: Decrypt user email, phone, and address for display
+        const decryptedOrders = orders.map(order => ({
+            ...order,
+            userId: order.userId ? {
+                ...order.userId,
+                email: decryptField(order.userId.email),
+                phone: decryptField(order.userId.phone),
+                address: decryptField(order.userId.address)
+            } : order.userId
+        }));
+
         return res.status(200).json({
             success: true,
             message: "Orders fetched successfully",
-            data: orders,
+            data: decryptedOrders,
             pagination: {
                 total,
                 page: Number(page),
@@ -171,6 +205,28 @@ exports.rejectOrder = async (req, res) => {
 
 exports.getOrderById = async (req, res) => {
     try {
+        // Helper function to decrypt sensitive fields
+        const decryptField = (encryptedValue) => {
+            if (!encryptedValue) return null;
+            try {
+                if (typeof encryptedValue === 'string') {
+                    const trimmed = encryptedValue.trim();
+                    if (!trimmed.startsWith('{')) return encryptedValue;
+                    try {
+                        const parsed = JSON.parse(trimmed);
+                        if (parsed.encrypted && parsed.iv && (parsed.authTag || parsed.authtag)) {
+                            return decrypt(encryptedValue);
+                        }
+                    } catch (parseError) {
+                        return encryptedValue;
+                    }
+                }
+                return decrypt(encryptedValue);
+            } catch (error) {
+                return encryptedValue;
+            }
+        };
+
         // ✅ PERFORMANCE OPTIMIZED: Use lean() and populate for faster response
         const order = await Order.findById(req.params.id)
             .populate('userId', 'username email fullname phone address')
@@ -182,10 +238,22 @@ exports.getOrderById = async (req, res) => {
                 message: "Order not found"
             });
         }
+
+        // ✅ DECRYPT FOR ADMIN PANEL: Decrypt user email, phone, and address for display
+        const decryptedOrder = {
+            ...order,
+            userId: order.userId ? {
+                ...order.userId,
+                email: decryptField(order.userId.email),
+                phone: decryptField(order.userId.phone),
+                address: decryptField(order.userId.address)
+            } : order.userId
+        };
+
         return res.status(200).json({
             success: true,
             message: "Order fetched successfully",
-            data: order
+            data: decryptedOrder
         });
     } catch (err) {
         console.error("Get Order by ID Error:", err);

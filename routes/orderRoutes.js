@@ -5,6 +5,8 @@ const { authenticateUser } = require("../middlewares/authorizedUser");
 const { isAdmin } = require("../middlewares/roleMiddleware");
 const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS } = require("../middlewares/securityMiddleware");
 const securityValidation = require("../middlewares/securityValidation");
+const validateRequest = require("../middlewares/validateRequest");
+const { createOrderSchema, idParamSchema } = require("../utils/validationSchemas");
 
 // All order routes require authentication
 router.use(authenticateUser);
@@ -15,7 +17,8 @@ router.get('/trend', securityValidation, sanitizeNoSQL, sanitizeCommands, saniti
 
 // Create order from cart
 // ✅ SECURITY: securityValidation detects malicious payloads in delivery instructions, payment method, etc.
-router.post("/", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.createOrder);
+// ✅ INPUT VALIDATION: Yup schema validates order creation data
+router.post("/", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(createOrderSchema, 'body'), orderController.createOrder);
 
 // Get user's orders
 // ✅ SECURITY: Validate query parameters (page, limit, status) for reflected XSS
@@ -23,7 +26,8 @@ router.get("/", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS
 
 // Get single order (✅ Already protected - checks userId)
 // ✅ SECURITY: Validate URL parameter for reflected XSS
-router.get("/:id", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, orderController.getOrderById);
+// ✅ INPUT VALIDATION: Yup schema validates order ID parameter
+router.get("/:id", securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(idParamSchema, 'params'), orderController.getOrderById);
 
 // Cancel order (✅ Already protected - checks userId)
 router.put("/:id/cancel", orderController.cancelOrder);

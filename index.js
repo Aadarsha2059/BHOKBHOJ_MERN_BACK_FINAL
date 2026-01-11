@@ -1,22 +1,73 @@
 require("dotenv").config()
 
-// ✅ Check email configuration on startup
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.warn('\n⚠️  EMAIL CONFIGURATION WARNING:');
-  console.warn('═══════════════════════════════════════');
-  console.warn('EMAIL_USER:', process.env.EMAIL_USER ? '✅ Set' : '❌ NOT SET');
-  console.warn('EMAIL_PASS:', process.env.EMAIL_PASS ? '✅ Set' : '❌ NOT SET');
+// Load and validate configuration
+const { envConfig } = require('./config/envConfig');
+
+// Check email config
+const { validateEmailConfig, getAppPasswordInstructions } = require('./utils/emailConfigValidator');
+
+const emailValidation = validateEmailConfig();
+if (!emailValidation.valid) {
+  console.warn('\nEMAIL CONFIGURATION WARNING');
+  console.warn('═══════════════════════════════════════════════════════════════');
+  console.warn('EMAIL_USER:', emailValidation.emailUser);
+  console.warn('EMAIL_PASS:', emailValidation.emailPass);
   console.warn('');
-  console.warn('OTP emails will NOT be sent without email configuration.');
-  console.warn('OTP codes will be logged to console instead.');
+  console.warn('Configuration Errors:');
+  emailValidation.errors.forEach((error, index) => {
+    console.warn(`   ${index + 1}. ${error}`);
+  });
   console.warn('');
-  console.warn('To fix: Add EMAIL_USER and EMAIL_PASS to your .env file');
-  console.warn('See EMAIL_TROUBLESHOOTING.md for detailed instructions');
-  console.warn('═══════════════════════════════════════\n');
+  console.warn('Suggestions:');
+  emailValidation.suggestions.forEach((suggestion, index) => {
+    console.warn(`   ${index + 1}. ${suggestion}`);
+  });
+  console.warn('');
+  console.warn('OTP emails and security notifications will NOT be sent.');
+  console.warn('System will use Ethereal Email (preview URLs only) for testing.');
+  console.warn('');
+  console.warn('To fix: Run "node testAppPassword.js" to validate your configuration');
+  console.warn('═══════════════════════════════════════════════════════════════\n');
 } else {
-  console.log('✅ Email configuration detected');
-  console.log('📧 EMAIL_USER:', process.env.EMAIL_USER);
-  console.log('🔐 EMAIL_PASS:', '***configured***');
+  console.log('Email Configuration Validated');
+  console.log('EMAIL_USER:', emailValidation.emailUser);
+  console.log('EMAIL_PASS: Validated (16 characters, correct format)');
+  console.log('Gmail App Password configuration is correct');
+  console.log('Security notification emails will be sent to your email address\n');
+}
+
+// Log configuration status
+if (envConfig.validation.errors.length > 0 || envConfig.validation.warnings.length > 0) {
+  console.log('\nENVIRONMENT CONFIGURATION STATUS');
+  console.log('═══════════════════════════════════════════════════════════════');
+  
+  if (envConfig.validation.errors.length > 0) {
+    console.error('Configuration Errors:');
+    envConfig.validation.errors.forEach((error, index) => {
+      console.error(`   ${index + 1}. ${error}`);
+    });
+  }
+  
+  if (envConfig.validation.warnings.length > 0) {
+    console.warn('\nConfiguration Warnings:');
+    envConfig.validation.warnings.forEach((warning, index) => {
+      console.warn(`   ${index + 1}. ${warning}`);
+    });
+  }
+  
+  console.log('═══════════════════════════════════════════════════════════════\n');
+} else {
+  console.log('Environment Configuration Validated');
+  console.log('Email Host:', envConfig.email.host);
+  console.log('Email Port:', envConfig.email.port);
+  console.log('Email Secure:', envConfig.email.secure);
+  console.log('Email From:', envConfig.email.from);
+  console.log('Email User:', envConfig.email.user ? 'Configured' : 'Not set (using Ethereal)');
+  console.log('Client URL:', envConfig.urls.clientUrl);
+  console.log('Base URL:', envConfig.urls.baseUrl);
+  console.log('CORS Allowed Origins:', envConfig.cors.allowedOrigins.length, 'origin(s) configured');
+  console.log('   Origins:', envConfig.cors.allowedOrigins.slice(0, 5).join(', ') + (envConfig.cors.allowedOrigins.length > 5 ? '...' : ''));
+  console.log('═══════════════════════════════════════════════════════════════\n');
 }
 
 const express=require("express")
@@ -39,7 +90,7 @@ const foodRoutes = require("./routes/foodRoutes")
 const cartRoutes = require("./routes/cartRoutes")
 const orderRoutes = require("./routes/orderRoutes")
 
-// Import models for public endpoints
+// Import models
 const Category = require("./models/foodCategory")
 const Restaurant = require("./models/Restaurant")
 const Product = require("./models/Product")
@@ -51,22 +102,35 @@ const { transformProductData, transformCategoryData, transformRestaurantData } =
 const path=require("path") 
 const crypto = require('crypto');
 const cors = require("cors")
+const bodyParser = require("body-parser");
+const csrf = require("csurf");
 const feedbackRoutes = require('./routes/feedbackRoutes')
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const passport = require('passport');
 require('./passport')(passport);
 
+// Import XSS prevention middleware
+const hpp = require('hpp');
+
+const xss = require('xss-clean');
+
+const expressXssSanitizer = require('express-xss-sanitizer');
+
+
+
+
 // Import security middleware
 const { securityHeaders, forceHTTPS, corsOptions } = require('./middlewares/securityHeaders');
-const { generalLimiter, authLimiter, apiLimiter, strictLimiter } = require('./middlewares/rateLimiter');
+const { generalLimiter, authLimiter, apiLimiter, strictLimiter, ipBasedLimiter } = require('./middlewares/rateLimiter');
+
+const corsConfig = require('./config/cors');
 
 const app=express() 
 
-// ✅ SECURED: Apply security headers in ALL environments
-// Headers are now enabled in both development and production
-// More permissive CSP in development, strict in production
+
 securityHeaders(app);
 
 // Force HTTPS redirect (production only - HTTP allowed in development)
@@ -74,47 +138,43 @@ if (process.env.NODE_ENV === 'production') {
     app.use(forceHTTPS);
 }
 
-// ✅ CORS FIX: Handle OPTIONS requests FIRST - before cors middleware
-// This ensures preflight requests are handled immediately with proper headers
+// Handle OPTIONS requests
 app.use((req, res, next) => {
     if (req.method === 'OPTIONS') {
         const origin = req.headers.origin;
-        console.log('\n🔍 ===== OPTIONS PREFLIGHT REQUEST =====');
-        console.log('📍 URL:', req.originalUrl);
-        console.log('📍 Method:', req.method);
-        console.log('🌐 Origin:', origin);
-        console.log('📋 Request Method:', req.headers['access-control-request-method'] || 'N/A');
-        console.log('📋 Request Headers:', req.headers['access-control-request-headers'] || 'N/A');
+        console.log('\n===== OPTIONS PREFLIGHT REQUEST =====');
+        console.log('URL:', req.originalUrl);
+        console.log('Method:', req.method);
+        console.log('Origin:', origin);
+        console.log('Request Method:', req.headers['access-control-request-method'] || 'N/A');
+        console.log('Request Headers:', req.headers['access-control-request-headers'] || 'N/A');
         
-        // Always set CORS headers for OPTIONS requests (be permissive in development)
-        // In development, allow all localhost origins (case-insensitive)
+        // Set CORS headers for localhost
         const originLower = origin ? origin.toLowerCase() : '';
         if (!origin || originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
             const allowedOrigin = origin || 'http://localhost:5173';
             
-            // ✅ CRITICAL: Match the exact headers requested by the browser
+            // Match requested headers
             const requestedHeaders = req.headers['access-control-request-headers'] || '';
             const requestedMethod = req.headers['access-control-request-method'] || 'POST';
             
-            // Set CORS headers - must match what browser requested
+            // Set CORS headers
             res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
             res.setHeader('Access-Control-Allow-Credentials', 'true');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-            // ✅ CRITICAL: Always allow Authorization header (even if browser doesn't request it in preflight)
-            // This is needed because POST requests may include Authorization header from localStorage
-            // We echo back what browser requested, but also ensure Authorization is always allowed
+            // Always allow Authorization header
             let allowedHeaders = '';
             if (requestedHeaders) {
-                // Echo back what browser requested, but ensure Authorization is included
+                // Include Authorization header
                 const headersList = requestedHeaders.split(',').map(h => h.trim().toLowerCase());
                 const headersSet = new Set(headersList);
                 
-                // Always add authorization (case-insensitive check)
+                // Add authorization header
                 if (!headersList.some(h => h.includes('authorization'))) {
                     headersSet.add('authorization');
                 }
                 
-                // Convert back to comma-separated string (preserve original case for requested headers)
+                // Convert to comma-separated string
                 const finalHeaders = requestedHeaders.split(',').map(h => h.trim());
                 if (!headersList.some(h => h.includes('authorization'))) {
                     finalHeaders.push('Authorization');
@@ -122,225 +182,145 @@ app.use((req, res, next) => {
                 
                 allowedHeaders = finalHeaders.join(', ');
                 res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
-                console.log('✅ Allowed headers (including Authorization):', allowedHeaders);
+                console.log('Allowed headers (including Authorization):', allowedHeaders);
             } else {
                 // Fallback: include all common headers
                 allowedHeaders = 'Content-Type, content-type, Authorization, authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token';
                 res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
-                console.log('✅ Allowed headers (fallback):', allowedHeaders);
+                console.log('Allowed headers (fallback):', allowedHeaders);
             }
             
-            // ✅ CRITICAL: Ensure response is complete and properly formatted
-            // Add all required CORS headers
+            
             res.setHeader('Vary', 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
             res.setHeader('Access-Control-Max-Age', '0');
             
-            console.log('✅ CORS headers set for OPTIONS request');
-            console.log('✅ Allowed Origin:', allowedOrigin);
-            console.log('✅ Allowed Method:', requestedMethod);
-            console.log('✅ Allowed Headers:', typeof allowedHeaders !== 'undefined' ? allowedHeaders : (requestedHeaders || 'All standard headers'));
-            console.log('⚠️  ⚠️  ⚠️  BROWSER WILL NOW SEND POST REQUEST ⚠️  ⚠️  ⚠️');
-            console.log('💡 After this OPTIONS succeeds, browser will send:');
-            console.log('   POST', req.originalUrl);
-            if (req.originalUrl.includes('/auth/register')) {
-                console.log('   With body containing: fullname, username, email, password, confirmpassword, phone, address');
-            } else if (req.originalUrl.includes('/auth/login')) {
-                console.log('   With body containing: username, password');
-            } else if (req.originalUrl.includes('/auth/verify-otp')) {
-                console.log('   With body containing: userId, otp');
-            } else {
-                console.log('   With body containing request data');
-            }
-            console.log('💡 💡 💡 CRITICAL: HOW TO SEE POST IN BURP SUITE INTERCEPT 💡 💡 💡');
-            console.log('   📍 If using Burp Suite Intercept tab (Intercept is ON):');
-            console.log('      1. You will see this OPTIONS request first in Intercept tab');
-            console.log('      2. Click "Forward" button to forward the OPTIONS request');
-            console.log('      3. Then you will see POST', req.originalUrl, 'with credentials!');
-            console.log('      4. In the POST request, go to Request tab → Scroll down → See JSON body');
-            if (req.originalUrl.includes('/auth/register')) {
-                console.log('      5. The JSON body will contain: {"fullname":"...","username":"...","email":"...","password":"...","confirmpassword":"...","phone":"...","address":"..."}');
-            } else if (req.originalUrl.includes('/auth/login')) {
-                console.log('      5. The JSON body will contain: {"username":"...","password":"..."}');
-            } else if (req.originalUrl.includes('/auth/verify-otp')) {
-                console.log('      5. The JSON body will contain: {"userId":"...","otp":"..."}');
-            }
-            console.log('      6. Click "Forward" again to send the POST request');
-            console.log('   📍 If using Burp Suite HTTP history tab (Intercept is OFF):');
-            console.log('      1. Go to Proxy → HTTP history');
-            console.log('      2. Filter by: Method = POST OR URL contains:', req.originalUrl);
-            console.log('      3. The POST request will appear RIGHT AFTER this OPTIONS request');
-            console.log('      4. Click the POST request → Request tab → Scroll down → See JSON body with credentials');
-            console.log('🔍 ===== OPTIONS RESPONSE SENT (200) =====\n');
+            console.log('CORS headers set for OPTIONS request');
+            console.log('Allowed Origin:', allowedOrigin);
+            console.log('Allowed Method:', requestedMethod);
+            console.log('Allowed Headers:', typeof allowedHeaders !== 'undefined' ? allowedHeaders : (requestedHeaders || 'All standard headers'));
+            console.log('===== OPTIONS RESPONSE SENT (200) =====\n');
             
-            // Send response immediately - don't continue to next middleware
+            // Send response immediately
             return res.status(200).end();
         } else {
-            // For non-localhost origins, still set headers (cors middleware will validate)
+            // Set headers for non-localhost origins
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Credentials', 'true');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, User-Agent, X-CSRF-Token');
-            console.log('✅ CORS headers set for OPTIONS request (non-localhost)');
-            console.log('🔍 ===== OPTIONS RESPONSE SENT (200) =====\n');
+            console.log('CORS headers set for OPTIONS request (non-localhost)');
+            console.log('===== OPTIONS RESPONSE SENT (200) =====\n');
             return res.status(200).end();
         }
     }
     next();
 });
 
-// CORS with security options - NOW SECURE IN ALL ENVIRONMENTS
-// This handles both preflight (OPTIONS) and actual requests (POST, GET, etc.)
-// The cors middleware automatically adds CORS headers to all responses
+
 app.use(cors(corsOptions))
 
-// ✅ BURP SUITE: Explicitly log OPTIONS responses to verify CORS is working
-// NOTE: This middleware runs AFTER the OPTIONS handler above, so OPTIONS requests are already handled
-// This is just for logging - the actual OPTIONS response was sent above
+
 app.use((req, res, next) => {
     if (req.method === 'OPTIONS') {
         // OPTIONS already handled above, just log
-        console.log(`\n⚠️  ⚠️  ⚠️  OPTIONS ALREADY HANDLED ABOVE ⚠️  ⚠️  ⚠️`);
-        console.log(`💡 The browser should now send the actual POST request`);
-        console.log(`💡 Look for POST ${req.originalUrl} in Burp Suite HTTP history\n`);
+        console.log(`\nOPTIONS already handled above`);
+        console.log(`Look for POST ${req.originalUrl} in HTTP history\n`);
         // Don't process further - already handled
         return next();
     }
     next();
 });
 
-// Body parser - MUST be before logging middleware to parse req.body
-// ✅ CRITICAL: This must be before any route handlers to parse POST request bodies
-app.use(express.json({ limit: '10mb' })) //accept json in request
-app.use(express.urlencoded({ extended: true, limit: '10mb' })) //accept form data
+app.use(express.json({ limit: '10kb' }))
+app.use(express.urlencoded({ extended: true, limit: '10kb' }))
 
-// ✅ BURP SUITE FIX: Enhanced logging for all requests (including POST, PUT, etc.)
+
+app.use(expressXssSanitizer.xss());
+
+
+
+app.use(hpp({ whitelist: [] }));
+
+
 app.use((req, res, next) => {
-    // Enhanced logging for security testing - log ALL requests including POST, PUT, DELETE
+    // Request logging
     if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_SECURITY_TESTING === 'true') {
-        // Skip logging for static files only
+        // Skip static files
         if (!req.originalUrl.includes('/uploads') && !req.originalUrl.includes('.js') && 
             !req.originalUrl.includes('.css') && !req.originalUrl.includes('.ico')) {
             
-            console.log(`\n🔍 ===== ${req.method} REQUEST =====`);
-            console.log(`📍 URL: ${req.method} ${req.originalUrl}`);
-            console.log(`🌐 Origin: ${req.headers.origin || 'No Origin'}`);
-            console.log(`🔑 User-Agent: ${req.headers['user-agent']?.substring(0, 50)}...`);
+            console.log(`\n===== ${req.method} REQUEST =====`);
+            console.log(`URL: ${req.method} ${req.originalUrl}`);
+            console.log(`Origin: ${req.headers.origin || 'No Origin'}`);
+            console.log(`User-Agent: ${req.headers['user-agent']?.substring(0, 50)}...`);
             
-            // ✅ CRITICAL: If this is a POST to auth/login, highlight it EXTREMELY
-            if (req.method === 'POST' && req.originalUrl.includes('/auth/login')) {
-                console.log('\n');
-                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
-                console.log('🚨 POST REQUEST TO /auth/login DETECTED ON SERVER 🚨');
-                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
-                console.log('✅ ✅ ✅ THIS IS THE REQUEST WITH CREDENTIALS ✅ ✅ ✅');
-                console.log('💡 This POST request SHOULD be visible in Burp Suite HTTP history');
-                console.log('💡 If you don\'t see it in Burp Suite, but you see this log, then:');
-                console.log('   1. Burp Suite is NOT capturing the request (check proxy settings)');
-                console.log('   2. You\'re looking at the wrong tab (use HTTP history, NOT Intercept)');
-                console.log('   3. Burp Suite filter is hiding it (clear all filters)');
-                console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
-                console.log('\n');
-            }
-            
-            // Log Authorization header (JWT tokens)
+            // Log Authorization header
             if (req.headers.authorization) {
-                console.log(`🎫 Authorization: ${req.headers.authorization.substring(0, 50)}...`);
+                console.log(`Authorization: ${req.headers.authorization.substring(0, 50)}...`);
             }
             
-            // Log request body for POST/PUT requests (now req.body is parsed)
+            // Log request body
             if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
-                console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
+                console.log('Request Body:', JSON.stringify(req.body, null, 2));
                 
-                // ✅ BURP SUITE: Enhanced logging for auth endpoints
+                // Log auth endpoints
                 if (req.originalUrl.includes('/auth/register') || 
                     req.originalUrl.includes('/auth/login') || 
                     req.originalUrl.includes('/auth/verify-otp')) {
-                    console.log('\n🔐 🔐 🔐 AUTHENTICATION REQUEST - CREDENTIALS VISIBLE IN BURP SUITE 🔐 🔐 🔐');
-                    console.log('═══════════════════════════════════════════════════════════════════════════════');
                     if (req.originalUrl.includes('/auth/register')) {
-                        console.log('📝 REGISTRATION CREDENTIALS:');
-                        console.log('   📧 Email:', req.body.email || 'N/A');
-                        console.log('   👤 Username:', req.body.username || 'N/A');
-                        console.log('   🔑 Password:', req.body.password || 'N/A');
-                        console.log('   🔑 Confirm Password:', req.body.confirmpassword || 'N/A');
-                        console.log('   👨‍💼 Full Name:', req.body.fullname || 'N/A');
-                        console.log('   📱 Phone:', req.body.phone || 'N/A');
-                        console.log('   🏠 Address:', req.body.address || 'N/A');
+                        console.log('REGISTRATION:', req.body.email || 'N/A');
                     } else if (req.originalUrl.includes('/auth/login')) {
-                        console.log('📝 LOGIN CREDENTIALS:');
-                        console.log('   👤 Username/Email:', req.body.username || req.body.email || 'N/A');
-                        console.log('   🔑 Password:', req.body.password || 'N/A');
-                        console.log('   ⚠️  ⚠️  ⚠️  THIS IS THE POST REQUEST WITH CREDENTIALS ⚠️  ⚠️  ⚠️');
-                        console.log('   💡 This POST request should be visible in Burp Suite');
-                        console.log('   💡 If you only see OPTIONS, check Burp Suite HTTP history tab (not Intercept tab)');
-                        console.log('   💡 The POST request comes AFTER the OPTIONS preflight');
-                        console.log('   💡 In Burp Suite: Proxy → HTTP history → Filter by: /api/auth/login');
+                        console.log('LOGIN:', req.body.username || req.body.email || 'N/A');
                     } else if (req.originalUrl.includes('/auth/verify-otp')) {
-                        console.log('📝 OTP VERIFICATION:');
-                        console.log('   🆔 User ID:', req.body.userId || 'N/A');
-                        console.log('   🔢 OTP Code:', req.body.otp || 'N/A');
+                        console.log('OTP VERIFICATION:', req.body.userId || 'N/A');
                     }
-                    console.log('═══════════════════════════════════════════════════════════════════════════════');
-                    console.log('💡 💡 💡 THESE CREDENTIALS ARE VISIBLE IN BURP SUITE HTTP HISTORY 💡 💡 💡');
-                    console.log('💡 Burp Suite will intercept this request and show all credentials in the request body');
-                    console.log('💡 This is normal for security testing - passwords are hashed before storage');
-                    console.log('💡 IMPORTANT: If you don\'t see this POST request in Burp Suite:');
-                    console.log('   1. Go to Burp Suite → Proxy → HTTP history (NOT Intercept tab)');
-                    console.log('   2. Turn OFF "Intercept" if it\'s on (Intercept tab → Intercept is off)');
-                    console.log('   3. Filter by URL: /api/auth/login');
-                    console.log('   4. Look for POST requests (not just OPTIONS)');
-                    console.log('   5. Click on the POST request to see the request body with credentials');
-                    console.log('═══════════════════════════════════════════════════════════════════════════════\n');
-                } else {
-                    console.log('✅ ✅ ✅ THIS IS THE REQUEST WITH CREDENTIALS FOR BURP SUITE ✅ ✅ ✅');
-                    console.log('💡 This POST request should be visible in Burp Suite HTTP history');
-                    console.log('💡 Look for this request AFTER the OPTIONS preflight request');
+                } else if (req.originalUrl.includes('/feedbacks')) {
+                    console.log('FEEDBACK:', req.body.userId || 'N/A', req.body.productId || 'N/A');
                 }
             }
             
-            // Log query parameters
+            // Log query params
             if (Object.keys(req.query).length > 0) {
-                console.log('🔍 Query Params:', JSON.stringify(req.query, null, 2));
+                console.log('Query Params:', JSON.stringify(req.query, null, 2));
             }
             
-            // Log cookies if present
+            // Log cookies
             if (req.headers.cookie) {
-                console.log('🍪 Cookies:', req.headers.cookie.substring(0, 100) + '...');
+                console.log('Cookies:', req.headers.cookie.substring(0, 100) + '...');
             }
             
-            // ✅ BURP SUITE: Log response when it's sent (only for non-OPTIONS)
+            // Log response
             if (req.method !== 'OPTIONS') {
                 const originalSend = res.send.bind(res);
                 res.send = function(data) {
-                    console.log(`\n📤 Response Status: ${res.statusCode}`);
+                    console.log(`Response Status: ${res.statusCode}`);
                     if (data && typeof data === 'string') {
                         try {
                             const jsonData = JSON.parse(data);
-                            console.log('📤 Response JSON:', JSON.stringify(jsonData, null, 2));
+                            console.log('Response JSON:', JSON.stringify(jsonData, null, 2));
                         } catch (e) {
-                            console.log('📤 Response Data:', data.substring(0, 200));
+                            console.log('Response Data:', data.substring(0, 200));
                         }
                     }
-                    console.log(`🔍 ===== REQUEST COMPLETE =====\n`);
+                    console.log(`===== REQUEST COMPLETE =====\n`);
                     return originalSend(data);
                 };
             }
         }
     }
     
-    // Let CORS middleware handle OPTIONS requests - don't interfere
+    // Continue to next middleware
     next();
 });
 
-// ✅ CORS FIX: Add CORS headers to all responses (backup for cors middleware)
+// Add CORS headers to responses
 app.use((req, res, next) => {
-    // Add CORS headers to all responses as backup
     const origin = req.headers.origin;
-    // ✅ CRITICAL FIX: Always set CORS headers for localhost origins (case-insensitive)
+    // Set CORS headers for localhost
     if (origin) {
         const originLower = origin.toLowerCase();
         if (originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
-            // Always set headers (cors middleware might not set them in all cases)
+            // Set headers
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Credentials', 'true');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -353,9 +333,9 @@ app.use((req, res, next) => {
 
 // CORS error handler - catches rejected origins
 app.use((err, req, res, next) => {
-    // ✅ CORS FIX: Ensure CORS headers are sent even on errors
+    // Set CORS headers on errors
     const origin = req.headers.origin;
-    // ✅ CRITICAL FIX: Always set CORS headers for localhost origins (case-insensitive)
+    // Set CORS headers for localhost
     if (origin) {
         const originLower = origin.toLowerCase();
         if (originLower.includes('localhost') || originLower.includes('127.0.0.1')) {
@@ -367,12 +347,12 @@ app.use((err, req, res, next) => {
     }
     
     if (req.method === 'OPTIONS') {
-        // If it's an OPTIONS request, always send CORS headers
+        // Send CORS headers for OPTIONS
         return res.status(200).end();
     }
     
     if (err.message && err.message.includes('CORS policy')) {
-        console.error('🚫 CORS Violation:', {
+        console.error('CORS Violation:', {
             origin: req.headers.origin,
             method: req.method,
             path: req.path,
@@ -388,27 +368,56 @@ app.use((err, req, res, next) => {
     next(err);
 });
 
-// ✅ Response logging is handled in the main logging middleware above
-// No need for duplicate logging
 
-// ✅ SECURED: Serve uploads with CORS headers to fix image loading issues
+// Serve uploads with CORS 
 app.use("/uploads", (req, res, next) => {
-  // Set CORS headers for image requests
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
-  next();
+  const origin = req.headers.origin;
+  const allowedOrigins = corsConfig.CORS_ALLOWED_ORIGINS;
+  if (req.method === 'OPTIONS') {
+    if (!origin) {
+      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type');
+      return res.status(200).end();
+    }
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      return res.status(200).end();
+    } else {
+      console.log('CORS BLOCKED on /uploads - Unauthorized origin:', origin);
+      return res.status(403).json({
+        success: false,
+        message: 'CORS policy: Origin not allowed for uploads endpoint'
+      });
+    }
+  }
+  if (!origin) {
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    return next();
+  }
+  if (allowedOrigins.indexOf(origin) !== -1) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  } else {
+   console.log('CORS BLOCKED on /uploads - Unauthorized origin:', origin);
+    console.log('   Allowed origins:', allowedOrigins);
+    return res.status(403).json({
+      success: false,
+      message: 'CORS policy: Origin not allowed for uploads endpoint'
+    });
+  }
 }, express.static(path.join(__dirname,"uploads")));
 
-// Serve static files from public directory (must be before routes)
+
 app.use(express.static(path.join(__dirname,"public")))
 
-// ✅ SECURED: Session configuration with MongoDB store
-// Session Fixation Protection: Session regeneration on login
-// Secure Cookie Settings: Environment-aware secure flag and sameSite
+// Session config
 app.use(session({
-    // ✅ SECURED: Generate random secret if not set (prevents predictable secrets)
+    // Generate random secret if not set
     secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
     resave: false,
     saveUninitialized: false,
@@ -418,24 +427,27 @@ app.use(session({
         ttl: 15 * 60 // 15 minutes in seconds
     }),
     cookie: {
-        maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds
-        httpOnly: true, // ✅ Prevents XSS cookie theft
-        // ✅ SECURED: Environment-aware secure flag (HTTPS only in production)
+        maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds (900,000 ms)
+        httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        // ✅ SECURED: Strict sameSite in production (better CSRF protection), Lax in development
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         path: '/'
     },
-    name: 'sessionId', // Cookie name
-    // ✅ SECURED: Generate secure session IDs
-    genid: () => crypto.randomBytes(16).toString('hex')
+    name: 'sessionId',
+    genid: () => crypto.randomBytes(16).toString('hex'),
+    rolling: true
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Rate limiting middleware - protect against DDoS and brute force attacks
-app.use(generalLimiter);
+
+// Session logging middleware - logs session information
+const sessionLogger = require('./middlewares/sessionLogger');
+app.use(sessionLogger);
+
+// IP-based rate limiting
+app.use(ipBasedLimiter);
 
 // Audit middleware - logs all requests
 app.use(auditMiddleware)
@@ -460,32 +472,25 @@ app.use("/api/cart", cartRoutes)
 app.use("/api/orders", orderRoutes)
 app.use("/api/feedbacks", feedbackRoutes)
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/devices', deviceRoutes);
 
-// ✅ CSRF Protection: Token endpoint for frontend
-// Frontend should call this endpoint to get CSRF token before making POST/PUT/DELETE requests
-app.get('/api/csrf-token', (req, res) => {
-    // Generate CSRF token if not exists in session
-    if (!req.session.csrfToken) {
-        const crypto = require('crypto');
-        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
-    }
-    
+const { csrfProtection } = require('./middlewares/csrfMiddleware');
+
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
     res.json({
         success: true,
-        csrfToken: req.session.csrfToken,
+        csrfToken: req.csrfToken(),
         message: 'CSRF token generated successfully'
     });
 });
 
-// ✅ BURP SUITE TESTING: Simple test endpoint (always available for testing)
+// Test endpoint
 app.post('/api/test/burp-simple', (req, res) => {
-    console.log('\n🧪 ===== BURP SUITE SIMPLE TEST ENDPOINT =====');
-    console.log('📍 Method:', req.method);
-    console.log('📍 URL:', req.originalUrl);
-    console.log('🌐 Origin:', req.headers.origin);
-    console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('🔑 Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('🧪 ===== END TEST ENDPOINT =====\n');
+    console.log('Method:', req.method);
+    console.log('URL:', req.originalUrl);
+    console.log('Origin:', req.headers.origin);
+    console.log('Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
     
     res.json({
         success: true,
@@ -504,13 +509,11 @@ app.post('/api/test/burp-simple', (req, res) => {
     });
 });
 
-// ✅ BURP SUITE TESTING: Test endpoints that simulate real API calls
+// Test endpoints
 app.post('/api/test/login-credentials', (req, res) => {
-    console.log('\n🧪 ===== TEST LOGIN CREDENTIALS ENDPOINT =====');
-    console.log('👤 Username:', req.body.username);
-    console.log('🔑 Password:', req.body.password);
-    console.log('📝 Full Body:', JSON.stringify(req.body, null, 2));
-    console.log('🧪 ===== END TEST =====\n');
+    console.log('Username:', req.body.username);
+    console.log('Password:', req.body.password);
+    console.log('Full Body:', JSON.stringify(req.body, null, 2));
     
     res.json({
         success: true,
@@ -525,12 +528,10 @@ app.post('/api/test/login-credentials', (req, res) => {
 });
 
 app.post('/api/test/register-credentials', (req, res) => {
-    console.log('\n🧪 ===== TEST REGISTER CREDENTIALS ENDPOINT =====');
-    console.log('👤 Username:', req.body.username);
-    console.log('📧 Email:', req.body.email);
-    console.log('🔑 Password:', req.body.password);
-    console.log('📝 Full Body:', JSON.stringify(req.body, null, 2));
-    console.log('🧪 ===== END TEST =====\n');
+    console.log('Username:', req.body.username);
+    console.log('Email:', req.body.email);
+    console.log('Password:', req.body.password);
+    console.log('Full Body:', JSON.stringify(req.body, null, 2));
     
     res.json({
         success: true,
@@ -541,13 +542,40 @@ app.post('/api/test/register-credentials', (req, res) => {
     });
 });
 
-// ✅ BURP SUITE TESTING: Add test endpoints
+// Payload size test endpoint
+app.post('/api/test/payload-size', (req, res) => {
+    const payloadSize = JSON.stringify(req.body).length;
+    const payloadSizeKB = (payloadSize / 1024).toFixed(2);
+    
+    console.log('Payload Size (bytes):', payloadSize);
+    console.log('Payload Size (KB):', payloadSizeKB);
+    console.log('Limit: 10kb');
+    console.log('Status:', payloadSize <= 10240 ? 'Within limit' : 'Exceeds limit');
+    console.log('Body keys:', Object.keys(req.body));
+    
+    res.json({
+        success: true,
+        message: 'Payload size test - request received',
+        payloadInfo: {
+            sizeBytes: payloadSize,
+            sizeKB: parseFloat(payloadSizeKB),
+            limitBytes: 10240,
+            limitKB: 10,
+            withinLimit: payloadSize <= 10240,
+            bodyKeys: Object.keys(req.body),
+            bodyKeyCount: Object.keys(req.body).length
+        },
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Test endpoints
 if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     // Test login endpoint
     app.post('/api/test/login', (req, res) => {
-        console.log('🧪 TEST LOGIN ENDPOINT HIT');
-        console.log('📝 Username:', req.body.username);
-        console.log('📝 Password:', req.body.password);
+        console.log('TEST LOGIN ENDPOINT');
+        console.log('Username:', req.body.username);
+        console.log('Password:', req.body.password);
         
         res.json({
             success: true,
@@ -562,9 +590,9 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test OTP verification endpoint
     app.post('/api/test/verify-otp', (req, res) => {
-        console.log('🧪 TEST OTP VERIFICATION ENDPOINT HIT');
-        console.log('📝 Email:', req.body.email);
-        console.log('📝 OTP:', req.body.otp);
+        console.log('TEST OTP VERIFICATION ENDPOINT');
+        console.log('Email:', req.body.email);
+        console.log('OTP:', req.body.otp);
         
         res.json({
             success: true,
@@ -579,8 +607,8 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test dashboard data endpoint
     app.get('/api/test/dashboard', (req, res) => {
-        console.log('🧪 TEST DASHBOARD ENDPOINT HIT');
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST DASHBOARD ENDPOINT');
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -604,10 +632,10 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test cart operations
     app.post('/api/test/cart/add', (req, res) => {
-        console.log('🧪 TEST ADD TO CART ENDPOINT HIT');
-        console.log('📝 Product ID:', req.body.productId);
-        console.log('📝 Quantity:', req.body.quantity);
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST ADD TO CART ENDPOINT');
+        console.log('Product ID:', req.body.productId);
+        console.log('Quantity:', req.body.quantity);
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -623,10 +651,10 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test order creation
     app.post('/api/test/orders/create', (req, res) => {
-        console.log('🧪 TEST CREATE ORDER ENDPOINT HIT');
-        console.log('📝 Payment Method:', req.body.paymentMethod);
-        console.log('📝 Delivery Instructions:', req.body.deliveryInstructions);
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST CREATE ORDER ENDPOINT');
+        console.log('Payment Method:', req.body.paymentMethod);
+        console.log('Delivery Instructions:', req.body.deliveryInstructions);
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -643,9 +671,9 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test profile update
     app.put('/api/test/profile/update', (req, res) => {
-        console.log('🧪 TEST PROFILE UPDATE ENDPOINT HIT');
-        console.log('📝 Profile Data:', JSON.stringify(req.body, null, 2));
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST PROFILE UPDATE ENDPOINT');
+        console.log('Profile Data:', JSON.stringify(req.body, null, 2));
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -660,10 +688,10 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test password change
     app.put('/api/test/password/change', (req, res) => {
-        console.log('🧪 TEST PASSWORD CHANGE ENDPOINT HIT');
-        console.log('📝 Current Password:', req.body.currentPassword);
-        console.log('📝 New Password:', req.body.newPassword);
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST PASSWORD CHANGE ENDPOINT');
+        console.log('Current Password:', req.body.currentPassword);
+        console.log('New Password:', req.body.newPassword);
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -679,8 +707,8 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test cart operations - get cart
     app.get('/api/test/cart', (req, res) => {
-        console.log('🧪 TEST GET CART ENDPOINT HIT');
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST GET CART ENDPOINT');
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -699,10 +727,10 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test cart update quantity
     app.put('/api/test/cart/update', (req, res) => {
-        console.log('🧪 TEST UPDATE CART ENDPOINT HIT');
-        console.log('📝 Product ID:', req.body.productId);
-        console.log('📝 New Quantity:', req.body.quantity);
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST UPDATE CART ENDPOINT');
+        console.log('Product ID:', req.body.productId);
+        console.log('New Quantity:', req.body.quantity);
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -718,9 +746,9 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
     
     // Test remove from cart
     app.delete('/api/test/cart/remove/:productId', (req, res) => {
-        console.log('🧪 TEST REMOVE FROM CART ENDPOINT HIT');
-        console.log('📝 Product ID to Remove:', req.params.productId);
-        console.log('📝 Auth Header:', req.headers.authorization);
+        console.log('TEST REMOVE FROM CART ENDPOINT');
+        console.log('Product ID to Remove:', req.params.productId);
+        console.log('Auth Header:', req.headers.authorization);
         
         res.json({
             success: true,
@@ -744,15 +772,16 @@ if (process.env.ALLOW_SECURITY_TESTING === 'true') {
         });
     });
     
-    console.log('🧪 Security testing endpoints enabled');
+    console.log('Security testing endpoints enabled');
 }
 
 // Public endpoints for Flutter app
+// Protected by rate limiter
 app.get("/api/categories", async (req, res) => {
     try {
         const categories = await Category.find().sort({ name: 1 });
         
-        // Transform categories with full image URLs
+        // Transform category images
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedCategories = categories.map(category => transformCategoryData(category, baseUrl));
         
@@ -781,7 +810,7 @@ app.get("/api/categories/:id", async (req, res) => {
             });
         }
 
-        // Transform category with full image URL
+        // Transform category image
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedCategory = transformCategoryData(category, baseUrl);
 
@@ -805,7 +834,7 @@ app.get("/api/restaurants", async (req, res) => {
         const restaurants = await Restaurant.find().sort({ name: 1 });
         console.log("Restaurants found:", restaurants.length);
         
-        // Transform restaurants with full image URLs
+        // Transform restaurant images
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedRestaurants = restaurants.map(restaurant => transformRestaurantData(restaurant, baseUrl));
         
@@ -839,7 +868,7 @@ app.get("/api/restaurants/:id", async (req, res) => {
             });
         }
 
-        // Transform restaurant with full image URL
+        // Transform restaurant image
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedRestaurant = transformRestaurantData(restaurant, baseUrl);
 
@@ -859,22 +888,8 @@ app.get("/api/restaurants/:id", async (req, res) => {
 
 app.get("/api/products", async (req, res) => {
     try {
-        // 🔍 BURP SUITE TESTING: Log detailed request information
-        console.log('\n🔍 GET PRODUCTS REQUEST INTERCEPTED (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('📍 Method:', req.method);
-        console.log('📍 Endpoint:', req.originalUrl);
-        console.log('📍 Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
-        console.log('🌐 Origin:', req.headers.origin || 'N/A');
-        console.log('🌐 Referer:', req.headers.referer || 'N/A');
-        console.log('👤 User Agent:', req.headers['user-agent'] || 'N/A');
-        console.log('🎫 Authorization Header:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
-        console.log('🔑 Content-Type:', req.headers['content-type'] || 'N/A');
-        console.log('📋 Accept:', req.headers.accept || 'N/A');
-        console.log('🌍 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
-        console.log('🕐 Timestamp:', new Date().toISOString());
-        console.log('📝 Query Parameters:', JSON.stringify(req.query, null, 2));
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        // Log request information
+        console.log('GET PRODUCTS REQUEST:', req.method, req.originalUrl);
         
         const { category, page = 1, limit = 12, search, sortBy, sortOrder } = req.query;
         let filter = {};
@@ -886,33 +901,11 @@ app.get("/api/products", async (req, res) => {
             .populate("restaurantId", "name filepath location contact")
             .populate("categoryId", "name filepath");
         
-        // Transform products with full image URLs using utility function
+        // Transform product images
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedProducts = products.map(product => transformProductData(product, baseUrl));
         
-        // 🔍 BURP SUITE TESTING: Log detailed response information
-        console.log('\n✅ GET PRODUCTS RESPONSE SENT (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('📦 Total Products Found:', transformedProducts.length);
-        console.log('📋 Filters Applied:', JSON.stringify(filter, null, 2));
-        console.log('📋 Query Parameters:', JSON.stringify(req.query, null, 2));
-        if (transformedProducts.length > 0) {
-            console.log('📦 Products Details:');
-            transformedProducts.forEach((product, index) => {
-                console.log(`   Product ${index + 1}:`);
-                console.log(`      ID: ${product._id || 'N/A'}`);
-                console.log(`      Name: ${product.name || 'N/A'}`);
-                console.log(`      Price: ${product.price || 0} NPR`);
-                console.log(`      Type: ${product.type || 'N/A'}`);
-                console.log(`      Category: ${product.categoryName || 'N/A'}`);
-                console.log(`      Restaurant: ${product.restaurantName || 'N/A'}`);
-                console.log(`      Location: ${product.restaurantLocation || 'N/A'}`);
-                console.log(`      Available: ${product.isAvailable !== false ? 'Yes' : 'No'}`);
-                console.log(`      Image URL: ${product.image || 'N/A'}`);
-            });
-        }
-        console.log('🕐 Response Timestamp:', new Date().toISOString());
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        console.log('GET PRODUCTS RESPONSE: Total Products Found:', transformedProducts.length);
         
         return res.status(200).json({
             success: true,
@@ -943,7 +936,7 @@ app.get("/api/products/:id", async (req, res) => {
             });
         }
 
-        // Transform product with full image URLs
+        // Transform product images
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const transformedProduct = transformProductData(product, baseUrl);
 
@@ -1035,7 +1028,7 @@ app.get("/api/transactions/:id", async (req, res) => {
 });
 
 // Explicit route for audit-view.html (works for both HTTP and HTTPS)
-// Placed before root route to ensure it's caught
+// Audit view route
 app.get('/audit-view.html', (req, res) => {
     const filePath = path.join(__dirname, 'public', 'audit-view.html');
     console.log(`[${new Date().toISOString()}] Serving audit-view.html from: ${filePath}`);
@@ -1057,43 +1050,194 @@ app.get(
 
 )
 
-// Health check endpoint for debugging
+// Health check endpoint
 app.get(
     "/api/health",
     (req,res) =>{
+        const socket = req.socket || req.connection;
+        const isEncrypted = socket?.encrypted || req.connection?.encrypted || false;
+        let tlsProtocol = 'N/A';
+        let cipherName = 'N/A';
+        
+        if (socket && isEncrypted) {
+            try {
+                if (socket.getProtocol) {
+                    tlsProtocol = socket.getProtocol();
+                }
+                if (socket.getCipher) {
+                    const cipher = socket.getCipher();
+                    cipherName = cipher.name;
+                }
+            } catch (error) {
+                // Ignore errors
+            }
+        }
+        
         return res.status(200).json({
-            success: true,
-            message: "MERN Backend is running",
+            status: "healthy",
+            secure: isEncrypted,
+            tls: {
+                protocol: tlsProtocol,
+                cipher: cipherName,
+                encrypted: isEncrypted
+            },
             timestamp: new Date().toISOString()
         })
     }
 )
 
-// TLS/SSL Information endpoint
+// Alternative health endpoint
+app.get(
+    "/api/v1/health",
+    (req,res) =>{
+        const socket = req.socket || req.connection;
+        const isEncrypted = socket?.encrypted || req.connection?.encrypted || false;
+        let tlsProtocol = 'N/A';
+        let cipherName = 'N/A';
+        
+        if (socket && isEncrypted) {
+            try {
+                if (socket.getProtocol) {
+                    tlsProtocol = socket.getProtocol();
+                }
+                if (socket.getCipher) {
+                    const cipher = socket.getCipher();
+                    cipherName = cipher.name;
+                }
+            } catch (error) {
+                // Ignore errors
+            }
+        }
+        
+        return res.status(200).json({
+            status: "healthy",
+            secure: isEncrypted,
+            tls: {
+                protocol: tlsProtocol,
+                cipher: cipherName,
+                encrypted: isEncrypted
+            },
+            timestamp: new Date().toISOString()
+        })
+    }
+)
+
+// TLS/SSL information endpoint
 app.get(
     "/api/tls-info",
     (req,res) =>{
+        // Get the actual socket/connection
+        const socket = req.socket || req.connection;
+        const isEncrypted = socket.encrypted || req.connection?.encrypted || false;
+        
+        // Extract TLS information
+        let actualProtocol = 'N/A';
+        let actualCipher = null;
+        let certificateInfo = null;
+        let sessionInfo = null;
+        
+        if (socket && isEncrypted) {
+            try {
+                // Get actual TLS protocol version (TLSv1.2 or TLSv1.3)
+                if (socket.getProtocol) {
+                    actualProtocol = socket.getProtocol();
+                }
+                
+                // Get cipher suite
+                if (socket.getCipher) {
+                    actualCipher = socket.getCipher();
+                }
+                
+                // Get certificate info
+                if (socket.getPeerCertificate) {
+                    const cert = socket.getPeerCertificate(true); // true = get full chain
+                    if (cert) {
+                        certificateInfo = {
+                            subject: cert.subject,
+                            issuer: cert.issuer,
+                            validFrom: cert.valid_from,
+                            validTo: cert.valid_to,
+                            serialNumber: cert.serialNumber,
+                            fingerprint: cert.fingerprint,
+                            keySize: cert.modulus ? cert.modulus.length * 8 : 'N/A',
+                            signatureAlgorithm: cert.sigalg || 'N/A'
+                        };
+                    }
+                }
+                
+                // Get session information
+                if (socket.getSession) {
+                    sessionInfo = socket.getSession();
+                }
+            } catch (error) {
+                console.error('Error extracting TLS info:', error.message);
+            }
+        }
+        
+        // Check Perfect Forward Secrecy
+        const hasPFS = actualCipher && (
+            actualCipher.name.includes('ECDHE') || 
+            actualCipher.name.includes('DHE') ||
+            actualProtocol === 'TLSv1.3' // TLS 1.3 always uses PFS
+        );
+        
         const tlsInfo = {
             success: true,
-            message: "TLS/SSL Connection Information",
+            message: isEncrypted ? "Secure TLS/SSL Connection Active" : "Connection is NOT encrypted (HTTP only)",
             connection: {
-                encrypted: req.connection.encrypted || req.socket.encrypted || false,
-                protocol: req.socket.getProtocol ? req.socket.getProtocol() : 'N/A',
-                cipher: req.socket.getCipher ? req.socket.getCipher() : null,
-                peerCertificate: req.socket.getPeerCertificate ? 
-                    (req.socket.getPeerCertificate().subject || 'N/A') : 'N/A'
+                // REAL connection status
+                encrypted: isEncrypted,
+                protocol: actualProtocol,
+                protocolVersion: actualProtocol === 'TLSv1.3' ? '1.3' : actualProtocol === 'TLSv1.2' ? '1.2' : 'Unknown',
+                // REAL cipher suite information
+                cipher: actualCipher ? {
+                    name: actualCipher.name,
+                    version: actualCipher.version,
+                    standardName: actualCipher.standardName || actualCipher.name
+                } : null,
+                // REAL certificate information
+                certificate: certificateInfo,
+                // Session information
+                sessionReused: sessionInfo ? true : false,
+                // Security features
+                perfectForwardSecrecy: hasPFS,
+                ephemeralKeys: hasPFS
             },
             server: {
-                tlsVersion: 'TLS 1.3',
-                cipherSuites: [
-                    'TLS_AES_256_GCM_SHA384',
-                    'TLS_CHACHA20_POLY1305_SHA256',
-                    'TLS_AES_128_GCM_SHA256'
+                // Server TLS configuration (from server-https.js)
+                tlsVersion: 'TLS Next (1.3 preferred, 1.2 fallback)',
+                minTlsVersion: 'TLS 1.2',
+                maxTlsVersion: 'TLS 1.3',
+                supportedCipherSuites: [
+                    'TLS 1.3: TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256',
+                    'TLS 1.2: ECDHE-RSA-AES256-GCM-SHA384, ECDHE-RSA-AES128-GCM-SHA256, ECDHE-RSA-AES256-SHA384'
                 ],
                 securityHeaders: 'Enabled',
-                hsts: 'Enabled (1 year)'
+                hsts: 'Enabled (1 year)',
+                insecureProtocolsBlocked: ['SSLv2', 'SSLv3', 'TLSv1.0', 'TLSv1.1']
             },
-            timestamp: new Date().toISOString()
+            request: {
+                method: req.method,
+                url: req.url,
+                protocol: req.protocol,
+                secure: req.secure,
+                hostname: req.hostname,
+                ip: req.ip || req.connection?.remoteAddress
+            },
+            timestamp: new Date().toISOString(),
+            verification: {
+                isSecure: isEncrypted,
+                isTLS12OrHigher: actualProtocol === 'TLSv1.2' || actualProtocol === 'TLSv1.3',
+                isTLS13: actualProtocol === 'TLSv1.3',
+                hasStrongCipher: actualCipher && (
+                    actualCipher.name.includes('GCM') || 
+                    actualCipher.name.includes('CHACHA20') ||
+                    actualProtocol === 'TLSv1.3'
+                ),
+                recommendation: isEncrypted 
+                    ? `✅ Connection is secure using ${actualProtocol} with ${actualCipher?.name || 'strong cipher'}`
+                    : '⚠️ Connection is NOT encrypted. Use HTTPS (https://) instead of HTTP.'
+            }
         };
         
         return res.status(200).json(tlsInfo);
@@ -1149,11 +1293,11 @@ app.get(
 app.get(
     "/users/:userid/:name",
     (req,res) =>{
-        //find if  userid and name is found in users.
+        // Find user by id and name
         let userid=parseInt(req.params.userid);
         let name=req.params.name;
 
-        //find if any user matches both id and name
+        // Match user
         const userFound= users.find(user=>user.id ===userid && user.name===name);
         if(userFound){
             return res.status(200).send("success");
@@ -1218,11 +1362,11 @@ app.get(
 )
 // add
 app.post(
-    "/blogs/", // can be same route with difference in type
+    "/blogs/",
     (req,res) => {
         //client send data in json format
         console.log("Client send",req.body)
-        //{id:1,name:"sangit",title:"asdf",desc:123}
+        //{id:1,name:"ram",title:"asdf",desc:123}
         //const id =req.body.id
         const{id,name,title,desc}=req.body
 
@@ -1295,22 +1439,37 @@ app.delete(
 const cartRouteAdmin = require("./routes/admin/cartRouteAdmin");
 const feedbackRouteAdmin = require("./routes/admin/feedbackRouteAdmin");
 const auditRouteAdmin = require("./routes/admin/auditRouteAdmin");
+const sessionTrackingAdmin = require("./routes/admin/sessionTrackingAdmin");
 const sessionRoutes = require("./routes/sessionRoutes");
 const sessionDemoRoutes = require("./routes/sessionDemoRoutes");
+const errorTestRoutes = require("./routes/test/errorTestRoutes");
 
 app.use("/api/admin/cart", cartRouteAdmin);
 app.use("/api/admin/feedback", feedbackRouteAdmin);
 app.use("/api/admin/audit", auditRouteAdmin);
+app.use("/api/admin/sessions", sessionTrackingAdmin);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/session-demo", sessionDemoRoutes);
 
-// ✅ Centralized Error Handling Middleware
-// IMPORTANT: Must be added AFTER all routes to catch errors from controllers
-// This middleware catches all errors passed via next(err) and handles them appropriately
+// Error handling test routes (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use("/api/test/errors", errorTestRoutes);
+}
+
+app.use((err, req, res, next) => {
+    if (err.code === 'EBADCSRFTOKEN') {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid CSRF token'
+        });
+    }
+    next(err);
+});
+
 const errorHandler = require('./middlewares/errorMiddleware');
 app.use(errorHandler);
 
-module.exports=app
+module.exports = app;
 
 
 
