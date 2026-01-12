@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "dev:https": "nodemon server-https.js",
     "generate-ssl": "node generate-ssl-cert-node.js",
+    "setup-mkcert": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File setup-mkcert.ps1' : 'bash setup-mkcert.sh', {stdio: 'inherit'})\"",
     "test": "jest"
   },
   "keywords": [],

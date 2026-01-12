@@ -4,3 +4,17 @@ node_modules
 
 .env
 .env.*
+
+# SSL Certificates and Private Keys (NEVER COMMIT THESE!)
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+**/ssl/**
+**/*.pem
+**/*.key

@@ -638,38 +638,56 @@ exports.loginUser = async (req, res) => {
       // ✅ SECURITY NOTIFICATION: Send unauthorized login attempt alert when reaching exactly 5 failed attempts
       // Security: Email is sent to the user's email (user.email) - the owner of the username used in login attempt
       // This ensures that even if hackers know a username and try wrong passwords, the real user gets notified
+      
+      // 🔍 DEBUG: Log loginAttempts for tracking
+      console.log(`\n🔍 LOGIN ATTEMPT TRACKING:`);
+      console.log(`   Current loginAttempts: ${user.loginAttempts}`);
+      console.log(`   Checking if === 5: ${user.loginAttempts === 5}`);
+      
       if (user.loginAttempts === 5) {
-        console.log('\n🚨 SECURITY ALERT: 5 failed login attempts detected - Sending email notification...');
+        console.log('\n🚨 🚨 🚨 SECURITY ALERT: 5 failed login attempts detected - Sending email notification... 🚨 🚨 🚨');
         console.log('👤 User:', user.username);
         console.log('📧 Email:', user.email);
         console.log('🌐 IP:', ip);
+        console.log('🔢 Failed Attempts:', user.loginAttempts);
+        console.log('🕐 Timestamp:', new Date().toISOString());
         console.log('═══════════════════════════════════════\n');
         
-        const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
-        const emailResult = await sendUnauthorizedLoginAttemptAlert(user, {
-          ipAddress: ip,
-          location: 'Unknown Location',
-          timestamp: new Date().toISOString(),
-          deviceInfo: req.get('user-agent') || 'Unknown Device',
-          failedAttempts: user.loginAttempts
-        });
-        
-        if (emailResult && emailResult.success) {
-          console.log('✅ Security notification email sent successfully');
-          if (emailResult.previewUrl) {
-            console.log('🌐 Email Preview URL:', emailResult.previewUrl);
-            console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
-            console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+        try {
+          const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
+          const emailResult = await sendUnauthorizedLoginAttemptAlert(user, {
+            ipAddress: ip,
+            location: 'Unknown Location',
+            timestamp: new Date().toISOString(),
+            deviceInfo: req.get('user-agent') || 'Unknown Device',
+            failedAttempts: user.loginAttempts
+          });
+          
+          if (emailResult && emailResult.success) {
+            console.log('✅ ✅ ✅ Security notification email sent successfully ✅ ✅ ✅');
+            if (emailResult.previewUrl) {
+              console.log('🌐 Email Preview URL:', emailResult.previewUrl);
+              console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
+              console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+            } else {
+              console.log('📧 Email sent to:', user.email);
+              console.log('✅ Check your email inbox for the security notification');
+            }
           } else {
-            console.log('📧 Email sent to:', user.email);
-            console.log('✅ Check your email inbox for the security notification');
+            console.error('❌ ❌ ❌ Failed to send security notification email ❌ ❌ ❌');
+            if (emailResult && emailResult.error) {
+              console.error('Error:', emailResult.error);
+            }
+            console.error('⚠️  Email service may be unavailable. Check EMAIL_USER and EMAIL_PASS configuration.');
           }
-        } else {
-          console.error('❌ Failed to send security notification email');
-          if (emailResult && emailResult.error) {
-            console.error('Error:', emailResult.error);
-          }
+        } catch (emailError) {
+          console.error('❌ ❌ ❌ Exception while sending security notification email ❌ ❌ ❌');
+          console.error('Error:', emailError.message);
+          console.error('Stack:', emailError.stack);
         }
+      } else {
+        console.log(`   ⚠️  Email NOT sent - loginAttempts (${user.loginAttempts}) is not exactly 5`);
+        console.log(`   💡 Email will be sent when loginAttempts reaches exactly 5`);
       }
       
       return res.status(403).json({ 

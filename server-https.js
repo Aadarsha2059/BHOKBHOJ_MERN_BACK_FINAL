@@ -24,23 +24,39 @@ if (MONGODB_URI.includes('mongo') && !process.env.USE_DOCKER_MONGO) {
 process.env.MONGODB_URI = MONGODB_URI;
 process.env.SECRET = process.env.SECRET || "your-secret-key-here";
 
-// SSL Certificate paths
+// SSL Certificate paths - Check for mkcert certificates first (trusted, no browser warnings)
+const mkcertKeyPath = path.join(__dirname, 'ssl', 'localhost+1-key.pem');
+const mkcertCertPath = path.join(__dirname, 'ssl', 'localhost+1.pem');
 const sslKeyPath = path.join(__dirname, 'ssl', 'key.pem');
 const sslCertPath = path.join(__dirname, 'ssl', 'cert.pem');
 
-// Check if SSL certificates exist
-const sslExists = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
+// Check if SSL certificates exist (prefer mkcert certificates)
+let sslKeyPathFinal = null;
+let sslCertPathFinal = null;
+let usingMkcert = false;
+
+if (fs.existsSync(mkcertKeyPath) && fs.existsSync(mkcertCertPath)) {
+    sslKeyPathFinal = mkcertKeyPath;
+    sslCertPathFinal = mkcertCertPath;
+    usingMkcert = true;
+} else if (fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+    sslKeyPathFinal = sslKeyPath;
+    sslCertPathFinal = sslCertPath;
+    usingMkcert = false;
+}
+
+const sslExists = sslKeyPathFinal !== null && sslCertPathFinal !== null;
 
 if (sslExists) {
     // HTTPS Server Configuration with TLS Next (TLS 1.3 preferred, TLS 1.2 fallback)
     const httpsOptions = {
-        key: fs.readFileSync(sslKeyPath),
-        cert: fs.readFileSync(sslCertPath),
-        // TLS Next Configuration: Prefer TLS 1.3, allow TLS 1.2 as fallback
-        minVersion: 'TLSv1.2', // Minimum TLS 1.2 (secure baseline)
-        maxVersion: 'TLSv1.3', // Maximum TLS 1.3 (latest and most secure)
-        // TLS 1.3 cipher suites are automatically selected by Node.js
-        // For TLS 1.2 fallback, specify strong cipher suites only
+        key: fs.readFileSync(sslKeyPathFinal),
+        cert: fs.readFileSync(sslCertPathFinal),
+        
+        minVersion: 'TLSv1.2',
+         
+        maxVersion: 'TLSv1.3', // Maximum TLS 1.3 
+        
         ciphers: [
             // TLS 1.2 cipher suites (strong only - for fallback compatibility)
             'ECDHE-RSA-AES256-GCM-SHA384',
@@ -69,24 +85,29 @@ if (sslExists) {
     // Create HTTPS server
     const httpsServer = https.createServer(httpsOptions, app);
 
+
     httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
-        console.log('\n🔐 ═══════════════════════════════════════════════════════');
+        console.log('\n ═══════════════════════════════════════════════════════');
         console.log('   BHOKBHOJ SECURE SERVER (HTTPS) STARTED');
         console.log('   ═══════════════════════════════════════════════════════');
-        console.log(`   🚀 HTTPS Server: https://localhost:${HTTPS_PORT}`);
-        console.log(`   📊 MongoDB URI: ${MONGODB_URI}`);
-        console.log(`   🔒 SSL/TLS: ENABLED`);
-        console.log(`   🛡️  Encryption: TLS Next (1.3 preferred, 1.2 fallback)`);
-        console.log(`   🔐 Cipher Suites: TLS 1.3 (AES-256-GCM, ChaCha20-Poly1305) + TLS 1.2 (ECDHE-AES-GCM)`);
-        console.log(`   🔒 Minimum TLS: 1.2 | Maximum TLS: 1.3`);
+        console.log(`    HTTPS Server: https://localhost:${HTTPS_PORT}`);
+        console.log(`   MongoDB URI: ${MONGODB_URI}`);
+        console.log(`    SSL/TLS: ENABLED`);
+        console.log(`   ${usingMkcert ? ' Trusted Certificate (mkcert)' : '  Self-Signed Certificate'}`);
+        console.log(`     Encryption: TLS Next (1.3 preferred, 1.2 fallback)`);
+        console.log(`    Cipher Suites: TLS 1.3 (AES-256-GCM, ChaCha20-Poly1305) + TLS 1.2 (ECDHE-AES-GCM)`);
+        console.log(`    Minimum TLS: 1.2 | Maximum TLS: 1.3`);
+        if (!usingMkcert) {
+            console.log(`    Run setup-mkcert.ps1 (Windows) or setup-mkcert.sh (macOS/Linux) for trusted certificates`);
+        }
         console.log('   ═══════════════════════════════════════════════════════');
-        console.log('\n   📝 API Endpoints (HTTPS):');
+        console.log('\n    API Endpoints (HTTPS):');
         console.log(`   • Registration: https://localhost:${HTTPS_PORT}/api/auth/register`);
         console.log(`   • Login: https://localhost:${HTTPS_PORT}/api/auth/login`);
         console.log(`   • Verify OTP: https://localhost:${HTTPS_PORT}/api/auth/verify-otp`);
         console.log('   ═══════════════════════════════════════════════════════\n');
     }).on('error', (err) => {
-        console.error('❌ HTTPS Server failed to start:', err.message);
+        console.error(' HTTPS Server failed to start:', err.message);
         if (err.code === 'EADDRINUSE') {
             console.error(`Port ${HTTPS_PORT} is already in use.`);
         }
