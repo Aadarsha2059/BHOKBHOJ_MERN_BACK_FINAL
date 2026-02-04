@@ -21,10 +21,10 @@ const jwt = require('jsonwebtoken');
 // Import security middleware
 const { sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateJWT } = require("../middlewares/securityMiddleware");
 const { csrfProtection, parseForm } = require("../middlewares/csrfMiddleware");
-// ✅ WHITE BOX TESTING: Import new security validation and rate limiting
+// Import new security validation and rate limiting
 const securityValidation = require("../middlewares/securityValidation");
 const { authLimiter } = require("../middlewares/rateLimiter");
-// ✅ IP-BASED SECURITY: Import secure authentication middleware
+// IP-based security: Import secure authentication middleware
 const { secureAuthentication } = require("../middlewares/secureAuthentication");
 
 // ==========================================
@@ -32,7 +32,7 @@ const { secureAuthentication } = require("../middlewares/secureAuthentication");
 // ==========================================
 
 // Register new user with validation and security
-// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
+// Security validation detects malicious payloads, rateLimiter prevents brute force
 router.post("/register", authLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateUser, registerUser);
 
 // GET handler for /register - provides endpoint information with TLS verification
@@ -88,20 +88,20 @@ router.get("/register", (req, res) => {
         },
         note: "Use POST request with JSON body. This endpoint is protected by HTTPS/TLS encryption.",
         verification: isEncrypted 
-            ? `✅ Connection is secure using ${tlsProtocol} with ${cipherName}`
-            : "⚠️ Connection is NOT encrypted. Use HTTPS (https://) instead of HTTP."
+            ? `Connection is secure using ${tlsProtocol} with ${cipherName}`
+            : "Connection is NOT encrypted. Use HTTPS (https://) instead of HTTP."
     });
 });
 
 // Login user with security (Step 1: Send OTP)
-// ✅ IP-BASED SECURITY: secureAuthentication checks IP blocking before processing login
-// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
-// ✅ INPUT VALIDATION: Yup schema validates login credentials
+// IP-based security: secureAuthentication checks IP blocking before processing login
+// Security validation detects malicious payloads, rateLimiter prevents brute force
+// Input validation: Yup schema validates login credentials
 router.post("/login", authLimiter, secureAuthentication, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(loginSchema, 'body'), loginUser);
 
 // Verify OTP and complete login (Step 2)
-// ✅ WHITE BOX TESTING: securityValidation detects malicious payloads, rateLimiter prevents brute force
-// ✅ INPUT VALIDATION: Yup schema validates OTP verification
+// Security validation detects malicious payloads, rateLimiter prevents brute force
+// Input validation: Yup schema validates OTP verification
 router.post("/verify-otp", authLimiter, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(otpVerificationSchema, 'body'), verifyOTP);
 
 // Get current user (protected route)
@@ -206,28 +206,28 @@ router
     });
 
 // Update user info with validation and security (legacy route - kept for backward compatibility)
-// ✅ IDOR FIX: Removed :id parameter - uses JWT token to identify user
-// ✅ SECURITY: securityValidation detects malicious payloads in profile fields
-// ✅ INPUT VALIDATION: Yup schema validates profile update data
+// IDOR fix: Removed :id parameter - uses JWT token to identify user
+// Security: securityValidation detects malicious payloads in profile fields
+// Input validation: Yup schema validates profile update data
 router.put("/update", authenticateUser, parseForm, csrfProtection, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(updateProfileSchema, 'body'), updateUser);
 
 // Update user profile (Secure - Security by Design)
-// ✅ SECURITY BY DESIGN: Uses req.user from JWT, prevents IDOR attacks
-// ✅ SECURITY BY DESIGN: Explicitly blocks role and isAdmin field updates
-// ✅ SECURITY: securityValidation detects malicious payloads in profile fields
-// ✅ INPUT VALIDATION: Yup schema validates profile update data
+// Security by design: Uses req.user from JWT, prevents IDOR attacks
+// Security by design: Explicitly blocks role and isAdmin field updates
+// Security: securityValidation detects malicious payloads in profile fields
+// Input validation: Yup schema validates profile update data
 router.put("/update-profile", authenticateUser, parseForm, csrfProtection, securityValidation, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(updateProfileSchema, 'body'), updateUserProfile);
 
 // Forgot password - send reset link with security
-// ✅ INPUT VALIDATION: Yup schema validates email
+// Input validation: Yup schema validates email
 router.post("/forgot-password", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(forgotPasswordSchema, 'body'), sendResetLink);
 
 // Reset password with token and security
-// ✅ INPUT VALIDATION: Yup schema validates reset token (params) and password (body)
+// Input validation: Yup schema validates reset token (params) and password (body)
 router.post("/reset-password/:token", sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(resetTokenParamSchema, 'params'), validateRequest(resetPasswordSchema, 'body'), resetPassword);
 
 // Change password (for logged-in users with old password verification)
-// ✅ INPUT VALIDATION: Yup schema validates password change data
+// Input validation: Yup schema validates password change data
 router.post("/change-password", authenticateUser, sanitizeNoSQL, sanitizeCommands, sanitizeXSS, validateRequest(changePasswordSchema, 'body'), changePassword);
 
 // Logout user (destroy session and invalidate token)
@@ -286,6 +286,106 @@ router.get('/auth/facebook/callback', sanitizeNoSQL, sanitizeXSS, passport.authe
   const token = jwt.sign({ id: req.user._id }, process.env.SECRET, { expiresIn: '7d' });
   // Redirect to frontend with token as query param
   res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login/success?token=${token}`);
+});
+
+// Test endpoint: Manually trigger unauthorized login email for testing
+// Usage: POST /api/auth/test-email-alert
+// Body: { username: "Aadarsha101" }
+router.post('/test-email-alert', async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const { username } = req.body;
+    
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username is required'
+      });
+    }
+    
+    console.log('\n[TEST] Test email alert endpoint');
+    console.log('Requested username:', username);
+    
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    console.log('[TEST] User found:', user.username);
+    console.log('User email (raw):', user.email);
+    console.log('Current loginAttempts:', user.loginAttempts || 0);
+    
+    // Decrypt email
+    const { decrypt } = require('../utils/aesEncryption');
+    let decryptedEmail = null;
+    
+    try {
+      if (typeof user.email === 'string' && user.email.trim().startsWith('{')) {
+        decryptedEmail = decrypt(user.email);
+      } else {
+        decryptedEmail = user.email;
+      }
+    } catch (decryptError) {
+      console.error('[TEST] Email decryption failed:', decryptError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to decrypt email',
+        error: decryptError.message
+      });
+    }
+    
+    if (!decryptedEmail || !decryptedEmail.includes('@')) {
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid email address',
+        email: decryptedEmail
+      });
+    }
+    
+    // Create user object with decrypted email
+    const userForEmail = {
+      ...user.toObject ? user.toObject() : user,
+      email: decryptedEmail
+    };
+    
+    // Send test email
+    const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
+    const emailResult = await sendUnauthorizedLoginAttemptAlert(userForEmail, {
+      ipAddress: req.ip || '127.0.0.1',
+      location: 'Test Location',
+      timestamp: new Date().toISOString(),
+      deviceInfo: 'Test Device',
+      failedAttempts: user.loginAttempts || 6
+    });
+    
+    if (emailResult && emailResult.success) {
+      return res.status(200).json({
+        success: true,
+        message: 'Test email sent successfully',
+        email: decryptedEmail,
+        previewUrl: emailResult.previewUrl,
+        isEthereal: emailResult.isEthereal,
+        loginAttempts: user.loginAttempts || 0
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send test email',
+        error: emailResult?.error || 'Unknown error',
+        email: decryptedEmail
+      });
+    }
+  } catch (error) {
+    console.error('[TEST] Test email endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;

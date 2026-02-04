@@ -153,6 +153,11 @@ const UserSchema = new mongoose.Schema(
       type: [String],
       default: []
     },
+    // ✅ OLD PASSWORD LOGIN: Allow old password to work once after password change
+    allowOldPasswordLogin: {
+      type: Boolean,
+      default: false
+    },
     // ✅ PASSWORD EXPIRY: Track when password was last changed
     passwordChangedAt: {
       type: Date,
@@ -195,7 +200,13 @@ const UserSchema = new mongoose.Schema(
 UserSchema.methods.checkPasswordReuse = async function(newPassword) {
   const bcrypt = require('bcrypt');
   
-  // If no password history, allow the password
+  // First, check if new password matches current password
+  const isCurrentPassword = await bcrypt.compare(newPassword, this.password);
+  if (isCurrentPassword) {
+    return true; // Password reuse detected (same as current)
+  }
+  
+  // If no password history, allow the password (but current password check already done above)
   if (!this.passwordHistory || this.passwordHistory.length === 0) {
     return false; // No reuse detected
   }

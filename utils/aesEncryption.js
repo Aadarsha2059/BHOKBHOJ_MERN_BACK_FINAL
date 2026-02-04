@@ -58,10 +58,20 @@ const decrypt = (encryptedData) => {
         
         if (!data.encrypted || !data.iv || !authTag) {
             // Not in encrypted format - return as is
+            console.warn('⚠️  Decrypt: Data missing required fields (encrypted, iv, authTag)');
             return encryptedData;
         }
 
         const secretKey = getSecretKey();
+        
+        // ✅ VERIFY: Check if encryption key is available
+        const encryptionKey = process.env.ENCRYPTION_KEY || process.env.SECRET;
+        if (!encryptionKey) {
+            console.error('❌ Decrypt: ENCRYPTION_KEY or SECRET not found in environment variables');
+            console.error('❌ Cannot decrypt email - encryption key missing!');
+            throw new Error('Encryption key not found in environment variables');
+        }
+
         const decipher = crypto.createDecipheriv(
             algorithm,
             secretKey,
@@ -75,15 +85,20 @@ const decrypt = (encryptedData) => {
 
         return decrypted;
     } catch (error) {
-        // Silently return original data if decryption fails (likely plain text)
-        // Only log if encryption is actually enabled to avoid noise
-        if (process.env.ENABLE_FIELD_ENCRYPTION === 'true') {
-            // Only log in development to help debug encryption issues
-            if (process.env.NODE_ENV === 'development') {
-                console.warn('Decryption warning: Data appears to be plain text, not encrypted:', error.message);
-            }
-        }
-        return encryptedData;
+        // ✅ ENHANCED ERROR LOGGING: Log decryption errors for debugging
+        console.error('\n❌ ❌ ❌ EMAIL DECRYPTION ERROR ❌ ❌ ❌');
+        console.error('═══════════════════════════════════════════════════════════════');
+        console.error('Error Type:', error.name);
+        console.error('Error Message:', error.message);
+        console.error('Error Code:', error.code);
+        console.error('Encrypted Data Preview:', typeof encryptedData === 'string' ? encryptedData.substring(0, 100) + '...' : encryptedData);
+        console.error('ENCRYPTION_KEY set:', !!process.env.ENCRYPTION_KEY);
+        console.error('SECRET set:', !!process.env.SECRET);
+        console.error('ENABLE_FIELD_ENCRYPTION:', process.env.ENABLE_FIELD_ENCRYPTION || 'not set');
+        console.error('═══════════════════════════════════════════════════════════════\n');
+        
+        // Re-throw the error so caller can handle it
+        throw error;
     }
 };
 

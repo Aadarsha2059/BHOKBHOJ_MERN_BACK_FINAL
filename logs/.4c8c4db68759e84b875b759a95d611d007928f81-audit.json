@@ -6,14 +6,9 @@
     "auditLog": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\.4c8c4db68759e84b875b759a95d611d007928f81-audit.json",
     "files": [
         {
-            "date": 1768104462583,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\application-2026-01-11.log",
-            "hash": "fc3631cfc1b3a947806a667ebe65c43417b0c5932f39f057b65730ee269a0976"
-        },
-        {
-            "date": 1768155301966,
-            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\application-2026-01-12.log",
-            "hash": "4e65fa8598c1754ab0716804b1c6c76dcc74a0a207b9c0b98f7f5a23b3a4d90b"
+            "date": 1770220359327,
+            "name": "C:\\Users\\User\\Documents\\Developer\\API\\MERN_BhokBhoj_FINAL\\Backend\\logs\\application-2026-02-04.log",
+            "hash": "6fb19fe5d961c05252d0a1900c7281b8186498766c2ed6e136fd1f5312cbfe20"
         }
     ],
     "hashType": "sha256"

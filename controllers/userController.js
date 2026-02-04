@@ -372,42 +372,57 @@ exports.registerUser = async (req, res) => {
   sanitizeXSS(req, res, () => {});
   */
 
-  // 🔍 BURP SUITE TESTING: Log registration request details
-  console.log('\n🔍 REGISTRATION REQUEST INTERCEPTED:');
-  console.log('═══════════════════════════════════════');
-  console.log('📧 Email:', req.body.email);
-  console.log('👤 Username:', req.body.username);
-  console.log('🔑 Password:', req.body.password);
-  console.log('🔑 Confirm Password:', req.body.confirmpassword);
-  console.log('👨‍💼 Full Name:', req.body.fullname);
-  console.log('📱 Phone:', req.body.phone);
-  console.log('🏠 Address:', req.body.address);
-  console.log('🌐 Origin:', req.headers.origin);
-  console.log('🔗 Referer:', req.headers.referer);
-  console.log('🕐 Timestamp:', new Date().toISOString());
-  console.log('═══════════════════════════════════════\n');
+  // Log registration request details
+  console.log('\n[REGISTRATION] Request received');
+  console.log('Email:', req.body.email);
+  console.log('Username:', req.body.username);
+  console.log('Full Name:', req.body.fullname);
+  console.log('Phone:', req.body.phone);
+  console.log('Address:', req.body.address);
+  console.log('Origin:', req.headers.origin);
+  console.log('Timestamp:', new Date().toISOString());
 
-  // ✅ INPUT VALIDATION: Yup validation middleware already validated req.body
+  // Input validation: Yup validation middleware already validated req.body
   // All fields are validated, sanitized, and ready to use
   const { fullname, username, email, password, confirmpassword, phone, address } = req.body;
 
   try {
-    // Check for existing user by username
-    const existingUserByUsername = await User.findOne({ username });
-    if (existingUserByUsername) {
-      return res.status(400).json({ success: false, message: "Username already exists" });
+    // Duplicate check: Allow username/email to be used 2 times (together or separately)
+    const existingUsersByUsername = await User.find({ username });
+    const existingUsersByEmail = await User.find({ email });
+    
+    // Check if username is used more than 2 times
+    if (existingUsersByUsername.length >= 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "This username has already been used 2 times. Please choose a different username." 
+      });
     }
-
-    // ✅ TESTING MODE: Allow duplicate emails
-    // const existingUserByEmail = await User.findOne({ email });
-    // if (existingUserByEmail) {
-    //   return res.status(400).json({ success: false, message: "Email already exists" });
-    // }
+    
+    // Check if email is used more than 2 times
+    if (existingUsersByEmail.length >= 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "This email has already been used 2 times. Please use a different email address." 
+      });
+    }
+    
+    // Check if the combination of username and email is used more than 2 times
+    const existingUsersByBoth = await User.find({ 
+      username: username,
+      email: email 
+    });
+    if (existingUsersByBoth.length >= 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "This combination of username and email has already been used 2 times. Please use different credentials." 
+      });
+    }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ EMAIL VERIFICATION: Generate verification token
+    // Email verification: Generate verification token
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     const emailVerificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     const emailVerificationTokenExpiresFormatted = emailVerificationTokenExpires.toISOString();
@@ -429,16 +444,14 @@ exports.registerUser = async (req, res) => {
     await newUser.save();
     console.log('User registered successfully:', newUser.username);
 
-    // 🔍 BURP SUITE TESTING: Log registration response
-    console.log('\n✅ REGISTRATION RESPONSE SENT:');
-    console.log('═══════════════════════════════════════');
-    console.log('📧 Registered Email:', newUser.email);
-    console.log('👤 Registered Username:', newUser.username);
-    console.log('🆔 User ID:', newUser._id);
-    console.log('🔐 Email Verification Token:', emailVerificationToken);
-    console.log('⏰ Email Verification Token Expires:', emailVerificationTokenExpiresFormatted);
-    console.log('🕐 Registration Time:', newUser.createdAt || new Date().toISOString());
-    console.log('═══════════════════════════════════════\n');
+    // Log registration response
+    console.log('\n[REGISTRATION] Response sent');
+    console.log('Registered Email:', newUser.email);
+    console.log('Registered Username:', newUser.username);
+    console.log('User ID:', newUser._id);
+    console.log('Email Verification Token:', emailVerificationToken);
+    console.log('Email Verification Token Expires:', emailVerificationTokenExpiresFormatted);
+    console.log('Registration Time:', newUser.createdAt || new Date().toISOString());
 
     return res.status(201).json({
       success: true,
@@ -446,12 +459,10 @@ exports.registerUser = async (req, res) => {
       data: newUser
     });
   } catch (err) {
-    console.error('\n❌ REGISTRATION ERROR:');
-    console.error('═══════════════════════════════════════');
+    console.error('\n[REGISTRATION] Error occurred');
     console.error('Error Message:', err.message);
     console.error('Error Stack:', err.stack);
     console.error('Request Body:', JSON.stringify(req.body, null, 2));
-    console.error('═══════════════════════════════════════\n');
 
     // Handle specific MongoDB errors
     if (err.name === 'ValidationError') {
@@ -488,24 +499,27 @@ const generateOTP = () => {
 
 // Login User with 2FA (Step 1: Verify credentials and send OTP)
 exports.loginUser = async (req, res) => {
-  // 🔍 BURP SUITE TESTING: Log login request details
-  console.log('\n🔍 LOGIN REQUEST INTERCEPTED:');
-  console.log('═══════════════════════════════════════');
-  console.log('👤 Username:', req.body.username);
-  console.log('🔑 Password:', req.body.password);
-  console.log('🌐 Origin:', req.headers.origin);
-  console.log('🔗 Referer:', req.headers.referer);
-  console.log('🕐 Timestamp:', new Date().toISOString());
-  console.log('═══════════════════════════════════════\n');
+  // Log login request details
+  console.log('\n[LOGIN] Request received');
+  console.log('Username:', req.body.username);
+  console.log('Origin:', req.headers.origin);
+  console.log('Referer:', req.headers.referer);
+  console.log('Timestamp:', new Date().toISOString());
 
   console.log('Login request body:', req.body);
   
-  // ✅ IP-BASED SECURITY: Extract IP address
+  // IP-based security: Extract IP address
   const ip = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || 'Unknown';
   const IPBlockService = require('../services/ipBlockService');
   
-  // ✅ IP-BASED SECURITY: Check if IP is blocked
-  if (IPBlockService.isBlocked(ip)) {
+  // Accept only username field (strict)
+  const { username, password } = req.body;
+  
+  // Admin bypass: Allow admin to bypass IP blocking (for admin_aadarsha username)
+  const isAdminUsername = username === 'admin_aadarsha';
+  
+  // IP-based security: Check if IP is blocked (skip for admin username)
+  if (!isAdminUsername && IPBlockService.isBlocked(ip)) {
     const remainingMinutes = IPBlockService.getRemainingBlockTime(ip);
     const attemptCount = IPBlockService.getAttemptCount(ip);
     return res.status(403).json({
@@ -518,8 +532,11 @@ exports.loginUser = async (req, res) => {
     });
   }
   
-  // Accept only username field (strict)
-  const { username, password } = req.body;
+  // Admin bypass: Clear IP blocks for admin username to ensure admin can always login
+  if (isAdminUsername) {
+    IPBlockService.clearAttempts(ip);
+    console.log('[LOGIN] IP blocks cleared for admin login attempt');
+  }
 
   // Validation
   if (!username || !password) {
@@ -529,14 +546,15 @@ exports.loginUser = async (req, res) => {
 
   try {
     // Find user by username only (strict)
+    // Note: We don't use .lean() here because we need the Mongoose document with getters for email decryption
     const user = await User.findOne({ username: username });
     if (!user) {
-      // ✅ IP-BASED SECURITY: Record failed attempt for non-existent user
+      // IP-based security: Record failed attempt for non-existent user
       await IPBlockService.recordAttempt(ip, req.originalUrl);
       return res.status(403).json({ success: false, message: "User not found" });
     }
 
-    // ✅ SECURED: Check if account is locked due to too many failed login attempts
+    // Check if account is locked due to too many failed login attempts
     if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
       const lockoutMinutes = Math.ceil((user.accountLockedUntil - new Date()) / (1000 * 60));
       return res.status(403).json({ 
@@ -555,9 +573,24 @@ exports.loginUser = async (req, res) => {
       await user.save();
     }
 
-    const passwordCheck = await bcrypt.compare(password, user.password);
+    // Old password login: Check if password matches current password OR old password (if allowed)
+    let passwordCheck = await bcrypt.compare(password, user.password);
+    let usedOldPassword = false;
+    
+    // If current password doesn't match and old password login is allowed, check password history
+    if (!passwordCheck && user.allowOldPasswordLogin && user.passwordHistory && user.passwordHistory.length > 0) {
+      // Get the most recent old password (last one in history)
+      const lastOldPassword = user.passwordHistory[user.passwordHistory.length - 1];
+      const oldPasswordCheck = await bcrypt.compare(password, lastOldPassword);
+      if (oldPasswordCheck) {
+        passwordCheck = true;
+        usedOldPassword = true;
+        console.log('[LOGIN] Old password accepted for login (one-time use after password change)');
+      }
+    }
+    
     if (!passwordCheck) {
-      // ✅ IP-BASED SECURITY: Record failed authentication attempt
+      // IP-based security: Record failed authentication attempt
       await IPBlockService.recordAttempt(ip, req.originalUrl);
       
       //  Increment failed login attempts
@@ -568,16 +601,15 @@ exports.loginUser = async (req, res) => {
         user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000); // Lock for 10 minutes
         await user.save();
         
-        // ✅ SECURITY NOTIFICATION: Send account locked alert (suspicious activity) - Only send once at exactly 10 attempts
+        // Security notification: Send account locked alert (suspicious activity) - Only send once at exactly 10 attempts
         if (user.loginAttempts === 10) {
-          console.log('\n🚨 CRITICAL SECURITY ALERT: Account locked after 10 failed login attempts - Sending email notification...');
-          console.log('👤 User:', user.username);
-          console.log('📧 Email:', user.email);
-          console.log('🌐 IP:', ip);
-          console.log('🔒 Account locked until:', user.accountLockedUntil);
-          console.log('═══════════════════════════════════════\n');
+          console.log('\n[SECURITY] Account locked after 10 failed login attempts - Sending email notification');
+          console.log('User:', user.username);
+          console.log('Email:', user.email);
+          console.log('IP:', ip);
+          console.log('Account locked until:', user.accountLockedUntil);
           
-          // ✅ ENHANCED: Extract device information and location using enhanced services
+          // Extract device information and location using enhanced services
           let formattedDeviceInfo = 'Unknown Device';
           let locationString = 'Unknown Location';
           
@@ -590,7 +622,7 @@ exports.loginUser = async (req, res) => {
             const locationData = await getLocationFromIP(ip);
             locationString = locationData.locationString || 'Unknown Location';
           } catch (geoError) {
-            console.error('⚠️  Error getting location/device info (email will still send):', geoError.message);
+            console.error('[SECURITY] Error getting location/device info (email will still send):', geoError.message);
             // Continue with defaults if geolocation fails
           }
           
@@ -604,17 +636,17 @@ exports.loginUser = async (req, res) => {
           });
           
           if (emailResult && emailResult.success) {
-            console.log('✅ Account locked security notification email sent successfully');
+            console.log('[SECURITY] Account locked security notification email sent successfully');
             if (emailResult.previewUrl) {
-              console.log('🌐 Email Preview URL:', emailResult.previewUrl);
-              console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
-              console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+              console.log('Email Preview URL:', emailResult.previewUrl);
+              console.log('Note: Using Ethereal Email - Check the preview URL above to view the email');
+              console.log('To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
             } else {
-              console.log('📧 Email sent to:', user.email);
-              console.log('✅ Check your email inbox for the account locked security notification');
+              console.log('Email sent to:', user.email);
+              console.log('Check your email inbox for the account locked security notification');
             }
           } else {
-            console.error('❌ Failed to send account locked security notification email');
+            console.error('[SECURITY] Failed to send account locked security notification email');
             if (emailResult && emailResult.error) {
               console.error('Error:', emailResult.error);
             }
@@ -630,81 +662,342 @@ exports.loginUser = async (req, res) => {
         });
       }
       
+      // Save user first to ensure loginAttempts is persisted
       await user.save();
+      
+      // Refresh user from database to ensure we have the latest loginAttempts value
+      // This ensures we're working with the actual saved value, not a stale in-memory value
+      const refreshedUser = await User.findById(user._id);
+      if (!refreshedUser) {
+        console.error('[LOGIN] Failed to refresh user from database');
+        // Fallback to original user object
+      } else {
+        // Update loginAttempts from refreshed user
+        user.loginAttempts = refreshedUser.loginAttempts;
+        console.log('[LOGIN] User refreshed from database - loginAttempts:', user.loginAttempts);
+      }
+      
       const remainingAttempts = 10 - user.loginAttempts;
       const ipAttempts = IPBlockService.getAttemptCount(ip);
       const ipRemainingAttempts = 5 - ipAttempts;
       
-      // ✅ SECURITY NOTIFICATION: Send unauthorized login attempt alert when reaching exactly 5 failed attempts
-      // Security: Email is sent to the user's email (user.email) - the owner of the username used in login attempt
+      // Security notification: Send unauthorized login attempt alert for every attempt after 5th
+      // Email is sent to the user's email - the owner of the username used in login attempt
       // This ensures that even if hackers know a username and try wrong passwords, the real user gets notified
+      // Send for every attempt >= 6 (after 5th failed attempt) to keep user informed
       
-      // 🔍 DEBUG: Log loginAttempts for tracking
-      console.log(`\n🔍 LOGIN ATTEMPT TRACKING:`);
-      console.log(`   Current loginAttempts: ${user.loginAttempts}`);
-      console.log(`   Checking if === 5: ${user.loginAttempts === 5}`);
+      // Log loginAttempts for tracking
+      console.log(`\n[LOGIN] Attempt tracking`);
+      console.log(`User ID: ${user._id}`);
+      console.log(`Username: ${user.username}`);
+      console.log(`Current loginAttempts: ${user.loginAttempts}`);
+      console.log(`Checking if >= 6 (after 5th attempt): ${user.loginAttempts >= 6}`);
+      console.log(`Checking if < 10 (before lockout): ${user.loginAttempts < 10}`);
+      console.log(`Condition check: ${user.loginAttempts >= 6 && user.loginAttempts < 10}`);
       
-      if (user.loginAttempts === 5) {
-        console.log('\n🚨 🚨 🚨 SECURITY ALERT: 5 failed login attempts detected - Sending email notification... 🚨 🚨 🚨');
-        console.log('👤 User:', user.username);
-        console.log('📧 Email:', user.email);
-        console.log('🌐 IP:', ip);
-        console.log('🔢 Failed Attempts:', user.loginAttempts);
-        console.log('🕐 Timestamp:', new Date().toISOString());
-        console.log('═══════════════════════════════════════\n');
+      // Send alert for every attempt >= 6 (after 5th failed attempt)
+      if (user.loginAttempts >= 6 && user.loginAttempts < 10) {
+        console.log(`\n[SECURITY] Email sending condition met`);
+        console.log(`loginAttempts: ${user.loginAttempts} is >= 6 and < 10`);
+        console.log(`Proceeding to send email...`);
+        console.log(`\n[SECURITY] ${user.loginAttempts} failed login attempts detected - Sending email notification`);
+        console.log('User:', user.username);
+        console.log('Email (raw):', user.email);
+        console.log('IP:', ip);
+        console.log('Failed Attempts:', user.loginAttempts);
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('Email will be sent for every attempt after 5th failed attempt');
         
         try {
-          const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
-          const emailResult = await sendUnauthorizedLoginAttemptAlert(user, {
+          // Decrypt email: Multiple methods to ensure email is decrypted
+          const { decrypt } = require('../utils/aesEncryption');
+          let decryptedEmail = null;
+          
+          console.log('\n[EMAIL] Decryption process started');
+          
+          // Check encryption key: Verify encryption key is available
+          const encryptionKey = process.env.ENCRYPTION_KEY || process.env.SECRET;
+          if (!encryptionKey) {
+            console.error('[EMAIL] Encryption key not found');
+            console.error('ENCRYPTION_KEY or SECRET not set in .env file');
+            console.error('Email decryption will fail!');
+          } else {
+            console.log('[EMAIL] Encryption key found:', encryptionKey.substring(0, 10) + '...');
+          }
+          console.log('[EMAIL] ENABLE_FIELD_ENCRYPTION:', process.env.ENABLE_FIELD_ENCRYPTION || 'not set');
+          
+          // Method 1: Try Mongoose getter (if ENABLE_FIELD_ENCRYPTION is true, getter should decrypt)
+          try {
+            const userObj = user.toObject ? user.toObject({ getters: true, virtuals: false }) : user;
+            let rawEmail = userObj.email || user.email;
+            console.log('[EMAIL] Method 1 - Email from toObject(getters:true):', typeof rawEmail === 'string' ? (rawEmail.length > 100 ? rawEmail.substring(0, 100) + '...' : rawEmail) : rawEmail);
+            console.log('[EMAIL] Method 1 - Email type:', typeof rawEmail);
+            console.log('[EMAIL] Method 1 - Starts with {:', rawEmail && typeof rawEmail === 'string' ? rawEmail.trim().startsWith('{') : 'N/A');
+            
+            if (rawEmail && typeof rawEmail === 'string' && rawEmail.includes('@') && !rawEmail.trim().startsWith('{')) {
+              decryptedEmail = rawEmail;
+              console.log('[EMAIL] Method 1 SUCCESS - Email already decrypted by getter');
+            } else {
+              throw new Error('Method 1 failed - email still encrypted or invalid');
+            }
+          } catch (method1Error) {
+            console.log('[EMAIL] Method 1 failed:', method1Error.message);
+            
+            // Method 2: Try direct access and manual decryption
+            try {
+              let rawEmail = user.email;
+              console.log('[EMAIL] Method 2 - Email from direct access:', typeof rawEmail === 'string' ? (rawEmail.length > 100 ? rawEmail.substring(0, 100) + '...' : rawEmail) : rawEmail);
+              console.log('[EMAIL] Method 2 - Email type:', typeof rawEmail);
+              
+              if (rawEmail && typeof rawEmail === 'string') {
+                const trimmed = rawEmail.trim();
+                console.log('[EMAIL] Method 2 - Trimmed email starts with {:', trimmed.startsWith('{'));
+                
+                if (trimmed.startsWith('{')) {
+                  // It's encrypted JSON, decrypt it
+                  try {
+                    console.log('[EMAIL] Method 2 - Attempting JSON parse...');
+                    const parsed = JSON.parse(trimmed);
+                    console.log('[EMAIL] Method 2 - Parsed keys:', Object.keys(parsed));
+                    console.log('[EMAIL] Method 2 - Has encrypted:', !!parsed.encrypted);
+                    console.log('[EMAIL] Method 2 - Has iv:', !!parsed.iv);
+                    console.log('[EMAIL] Method 2 - Has authTag:', !!(parsed.authTag || parsed.authtag));
+                    
+                    if (parsed.encrypted && parsed.iv && (parsed.authTag || parsed.authtag)) {
+                      console.log('[EMAIL] Method 2 - Attempting decryption...');
+                      decryptedEmail = decrypt(rawEmail);
+                      console.log('[EMAIL] Method 2 SUCCESS - Email decrypted from JSON');
+                      console.log('[EMAIL] Decrypted email preview:', decryptedEmail ? (decryptedEmail.length > 50 ? decryptedEmail.substring(0, 50) + '...' : decryptedEmail) : 'null');
+                    } else {
+                      throw new Error('Not encrypted format - missing required fields');
+                    }
+                  } catch (parseError) {
+                    console.error('[EMAIL] Method 2 - JSON parse/decrypt error:', parseError.message);
+                    throw new Error('JSON parse/decrypt failed: ' + parseError.message);
+                  }
+                } else if (rawEmail.includes('@')) {
+                  // Already decrypted
+                  decryptedEmail = rawEmail;
+                  console.log('[EMAIL] Method 2 SUCCESS - Email already decrypted');
+                } else {
+                  throw new Error('Email format invalid - no @ symbol found');
+                }
+              } else {
+                throw new Error('Email is not a string - type: ' + typeof rawEmail);
+              }
+            } catch (method2Error) {
+              console.log('[EMAIL] Method 2 failed:', method2Error.message);
+              
+              // Method 3: Try accessing raw document data (_doc) - this bypasses getters
+              try {
+                // Use lean() or _doc to get raw encrypted value without getters
+                const rawDoc = user._doc || user;
+                let rawEmail = rawDoc.email;
+                console.log('[EMAIL] Method 3 - Email from _doc:', typeof rawEmail === 'string' ? (rawEmail.length > 100 ? rawEmail.substring(0, 100) + '...' : rawEmail) : rawEmail);
+                console.log('[EMAIL] Method 3 - Email type:', typeof rawEmail);
+                
+                if (rawEmail && typeof rawEmail === 'string') {
+                  const trimmed = rawEmail.trim();
+                  if (trimmed.startsWith('{')) {
+                    console.log('[EMAIL] Method 3 - Attempting decryption from _doc...');
+                    try {
+                      decryptedEmail = decrypt(rawEmail);
+                      console.log('[EMAIL] Method 3 SUCCESS - Email decrypted from _doc');
+                      console.log('[EMAIL] Decrypted email preview:', decryptedEmail ? (decryptedEmail.length > 50 ? decryptedEmail.substring(0, 50) + '...' : decryptedEmail) : 'null');
+                    } catch (decryptError) {
+                      console.error('[EMAIL] Method 3 - Decryption error:', decryptError.message);
+                      throw decryptError;
+                    }
+                  } else if (rawEmail.includes('@')) {
+                    decryptedEmail = rawEmail;
+                    console.log('[EMAIL] Method 3 SUCCESS - Email from _doc is plain text');
+                  } else {
+                    throw new Error('Invalid email format in _doc - no @ and not JSON');
+                  }
+                } else {
+                  throw new Error('Email not found in _doc or not a string - type: ' + typeof rawEmail);
+                }
+              } catch (method3Error) {
+                console.error('[EMAIL] Method 3 failed:', method3Error.message);
+                
+                // Method 4: Last resort - try to get raw value using lean query
+                try {
+                  console.log('[EMAIL] Method 4 - Attempting to fetch user with lean()...');
+                  const rawUser = await User.findById(user._id).lean();
+                  if (rawUser && rawUser.email) {
+                    let rawEmail = rawUser.email;
+                    console.log('[EMAIL] Method 4 - Email from lean query:', typeof rawEmail === 'string' ? (rawEmail.length > 100 ? rawEmail.substring(0, 100) + '...' : rawEmail) : rawEmail);
+                    
+                    if (typeof rawEmail === 'string' && rawEmail.trim().startsWith('{')) {
+                      decryptedEmail = decrypt(rawEmail);
+                      console.log('[EMAIL] Method 4 SUCCESS - Email decrypted from lean query');
+                    } else if (rawEmail && rawEmail.includes('@')) {
+                      decryptedEmail = rawEmail;
+                      console.log('[EMAIL] Method 4 SUCCESS - Email from lean query is plain text');
+                    } else {
+                      throw new Error('Invalid email format from lean query');
+                    }
+                  } else {
+                    throw new Error('User not found or email missing in lean query');
+                  }
+                } catch (method4Error) {
+                  console.error('[EMAIL] Method 4 failed:', method4Error.message);
+                  throw new Error('All email decryption methods failed. Errors: Method1=' + method1Error.message + ', Method2=' + method2Error.message + ', Method3=' + method3Error.message + ', Method4=' + method4Error.message);
+                }
+              }
+            }
+          }
+          
+          // Final validation
+          if (!decryptedEmail || typeof decryptedEmail !== 'string' || !decryptedEmail.includes('@')) {
+            console.error('[EMAIL] Final email validation failed');
+            console.error('Decrypted email value:', decryptedEmail);
+            console.error('Email type:', typeof decryptedEmail);
+            console.error('Email length:', decryptedEmail ? decryptedEmail.length : 0);
+            throw new Error('Invalid email format after decryption - cannot send security notification');
+          }
+          
+          console.log('[EMAIL] Email decryption successful');
+          console.log('Final decrypted email:', decryptedEmail);
+          
+          // Extract device information and location using enhanced services
+          let formattedDeviceInfo = 'Unknown Device';
+          let locationString = 'Unknown Location';
+          
+          try {
+            const { extractDeviceInfo } = require('../utils/deviceFingerprint');
+            const { getLocationFromIP, getFormattedDeviceInfo } = require('../utils/geolocationService');
+            
+            const deviceInfo = extractDeviceInfo(req);
+            formattedDeviceInfo = getFormattedDeviceInfo(deviceInfo);
+            const locationData = await getLocationFromIP(ip);
+            locationString = locationData.locationString || 'Unknown Location';
+          } catch (geoError) {
+            console.error('[SECURITY] Error getting location/device info (email will still send):', geoError.message);
+            // Use basic device info if geolocation fails
+            formattedDeviceInfo = req.get('user-agent') || 'Unknown Device';
+          }
+          
+          // Create user object with decrypted email for email service
+          const userForEmail = {
+            ...user.toObject ? user.toObject() : user,
+            email: decryptedEmail
+          };
+          
+          console.log('\n[EMAIL] Calling email service');
+          console.log('User for email:', JSON.stringify({
+            username: userForEmail.username,
+            fullname: userForEmail.fullname,
+            email: userForEmail.email,
+            emailLength: userForEmail.email ? userForEmail.email.length : 0
+          }, null, 2));
+          console.log('Attempt details:', JSON.stringify({
             ipAddress: ip,
-            location: 'Unknown Location',
+            location: locationString,
             timestamp: new Date().toISOString(),
-            deviceInfo: req.get('user-agent') || 'Unknown Device',
+            deviceInfo: formattedDeviceInfo,
             failedAttempts: user.loginAttempts
-          });
+          }, null, 2));
+          
+          const { sendUnauthorizedLoginAttemptAlert } = require('../utils/securityNotificationService');
+          
+          // Ensure email service is actually called
+          let emailResult = null;
+          try {
+            emailResult = await sendUnauthorizedLoginAttemptAlert(userForEmail, {
+              ipAddress: ip,
+              location: locationString,
+              timestamp: new Date().toISOString(),
+              deviceInfo: formattedDeviceInfo,
+              failedAttempts: user.loginAttempts
+            });
+            
+            console.log('\n[EMAIL] Email service response');
+            console.log('Email result:', JSON.stringify(emailResult, null, 2));
+          } catch (emailServiceError) {
+            console.error('\n[EMAIL] Email service call failed');
+            console.error('Error Type:', emailServiceError.name);
+            console.error('Error Message:', emailServiceError.message);
+            console.error('Error Stack:', emailServiceError.stack);
+            emailResult = { success: false, error: emailServiceError.message };
+          }
           
           if (emailResult && emailResult.success) {
-            console.log('✅ ✅ ✅ Security notification email sent successfully ✅ ✅ ✅');
+            console.log('[SECURITY] Security notification email sent successfully');
             if (emailResult.previewUrl) {
-              console.log('🌐 Email Preview URL:', emailResult.previewUrl);
-              console.log('💡 Note: Using Ethereal Email - Check the preview URL above to view the email');
-              console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+              console.log('Email Preview URL:', emailResult.previewUrl);
+              console.log('Note: Using Ethereal Email - Check the preview URL above to view the email');
+              console.log('To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
             } else {
-              console.log('📧 Email sent to:', user.email);
-              console.log('✅ Check your email inbox for the security notification');
+              console.log('Email sent to:', decryptedEmail);
+              console.log('Check your email inbox for the security notification');
             }
           } else {
-            console.error('❌ ❌ ❌ Failed to send security notification email ❌ ❌ ❌');
+            console.error('[SECURITY] Failed to send security notification email');
             if (emailResult && emailResult.error) {
               console.error('Error:', emailResult.error);
+              console.error('Error Code:', emailResult.errorCode);
             }
-            console.error('⚠️  Email service may be unavailable. Check EMAIL_USER and EMAIL_PASS configuration.');
+            console.error('Email service may be unavailable. Check EMAIL_USER and EMAIL_PASS configuration.');
+            console.error('Attempted to send to:', decryptedEmail);
+            console.error('User email (raw):', user.email);
+            console.error('User email (type):', typeof user.email);
           }
         } catch (emailError) {
-          console.error('❌ ❌ ❌ Exception while sending security notification email ❌ ❌ ❌');
-          console.error('Error:', emailError.message);
-          console.error('Stack:', emailError.stack);
+          console.error('[SECURITY] Exception while sending security notification email');
+          console.error('Error Type:', emailError.name);
+          console.error('Error Message:', emailError.message);
+          console.error('Error Stack:', emailError.stack);
+          console.error('Attempted to send to:', decryptedEmail || 'Unknown');
+          console.error('User email (raw):', user.email);
+          console.error('User email (type):', typeof user.email);
+          
+          // Don't throw - allow login to continue even if email fails
         }
       } else {
-        console.log(`   ⚠️  Email NOT sent - loginAttempts (${user.loginAttempts}) is not exactly 5`);
-        console.log(`   💡 Email will be sent when loginAttempts reaches exactly 5`);
-      }
+          if (user.loginAttempts < 6) {
+            console.log(`\n[SECURITY] Email not sent - condition not met`);
+            console.log(`Current loginAttempts: ${user.loginAttempts}`);
+            console.log(`Required: loginAttempts >= 6`);
+            console.log(`Status: ${user.loginAttempts < 6 ? 'NOT MET' : 'MET'}`);
+            console.log(`Email will be sent when loginAttempts reaches 6 (after 5th failed attempt)`);
+            console.log(`You need ${6 - user.loginAttempts} more failed attempt(s) to trigger email`);
+          } else if (user.loginAttempts >= 10) {
+            console.log(`\n[SECURITY] Email not sent - account locked`);
+            console.log(`Current loginAttempts: ${user.loginAttempts}`);
+            console.log(`Status: Account locked (>= 10 attempts)`);
+            console.log(`Account lockout email will be sent separately`);
+          }
+        }
       
       return res.status(403).json({ 
         success: false, 
         message: `Invalid credentials. ${remainingAttempts} attempt(s) remaining before account lockout.`,
         remainingAttempts: remainingAttempts,
+        loginAttempts: user.loginAttempts,
+        emailWillBeSentAt: 6,
         ipAttempts: ipAttempts,
         ipRemainingAttempts: ipRemainingAttempts > 0 ? ipRemainingAttempts : 0
       });
     }
 
-    // ✅ IP-BASED SECURITY: Clear any previous block attempts on successful authentication
+    // IP-based security: Clear any previous block attempts on successful authentication
     IPBlockService.clearAttempts(ip);
     
-    // ✅ SECURED: Reset login attempts on successful password verification
+    // Reset login attempts on successful password verification
     user.loginAttempts = 0;
     user.accountLockedUntil = null;
+    
+    // Old password login: Disable old password login after successful login (whether new or old password was used)
+    if (user.allowOldPasswordLogin) {
+      user.allowOldPasswordLogin = false;
+      if (usedOldPassword) {
+        console.log('[LOGIN] Old password login used - disabling old password login for future attempts');
+      } else {
+        console.log('[LOGIN] New password login used - disabling old password login');
+      }
+    }
+    
     await user.save();
 
     // ✅ PASSWORD EXPIRY: Check if password has expired
@@ -725,7 +1018,7 @@ exports.loginUser = async (req, res) => {
 
     // For admin users, skip OTP and login directly
     if (user.role === 'admin') {
-      // ✅ SECURED: Regenerate session on login (prevents session fixation attack)
+      // Regenerate session on login (prevents session fixation attack)
       req.session.regenerate(async (err) => {
         if (err) {
           console.error('Session regeneration error:', err);
@@ -735,7 +1028,7 @@ exports.loginUser = async (req, res) => {
           });
         }
 
-        // ✅ DECRYPT EMAIL: Ensure email is decrypted before storing in express-session
+        // Decrypt email: Ensure email is decrypted before storing in express-session
         // Express-session is server-side only, so we can store plain text emails
         const { decrypt } = require('../utils/aesEncryption');
         let decryptedEmail = user.email;
@@ -761,13 +1054,18 @@ exports.loginUser = async (req, res) => {
         req.session.ipAddress = req.ip || req.connection.remoteAddress;
         req.session.userAgent = req.get('user-agent');
         
-        // ✅ SESSION TIMEOUT: Set session cookie expiration to 15 minutes
+        // Session timeout: Set session cookie expiration to 15 minutes
         req.session.cookie.originalMaxAge = 15 * 60 * 1000; // 15 minutes
         req.session.cookie.expires = new Date(Date.now() + 15 * 60 * 1000);
         
-        // ✅ SECURED: Ensure login attempts are reset (double-check)
+        // Ensure login attempts are reset (double-check)
         user.loginAttempts = 0;
         user.accountLockedUntil = null;
+        // Old password login: Disable old password login after successful admin login
+        if (user.allowOldPasswordLogin) {
+          user.allowOldPasswordLogin = false;
+          console.log('[LOGIN] Admin login successful - disabling old password login');
+        }
         user.save().catch(err => console.error('Error resetting login attempts:', err));
 
         const payload = {
@@ -780,7 +1078,7 @@ exports.loginUser = async (req, res) => {
 
         const token = jwt.sign(payload, process.env.SECRET || 'your-secret-key', { expiresIn: "24h" });
 
-        // ✅ SESSION MANAGEMENT: Create session in database for tracking
+        // Session management: Create session in database for tracking
         const { createSession } = require('../middlewares/sessionMiddleware');
         try {
           await createSession(user._id, token, req);
@@ -792,22 +1090,20 @@ exports.loginUser = async (req, res) => {
           });
         }
 
-        // ✅ DEVICE TRACKING: Track device on successful admin login
+        // Device tracking: Track device on successful admin login
         const { trackDevice } = require('../services/deviceTrackingService');
         trackDevice(user, req).catch(deviceError => {
           console.error('Error tracking device:', deviceError);
           // Continue with login even if device tracking fails
         });
 
-        // 🔍 BURP SUITE TESTING: Log admin login response
-        console.log('\n✅ ADMIN LOGIN RESPONSE SENT:');
-        console.log('═══════════════════════════════════════');
-        console.log('👤 Admin Username:', user.username);
-        console.log('📧 Admin Email:', user.email);
-        console.log('🎫 JWT Token:', token.substring(0, 50) + '...');
-        console.log('🔐 Session ID (regenerated):', req.sessionID);
-        console.log('🕐 Login Time:', new Date().toISOString());
-        console.log('═══════════════════════════════════════\n');
+        // Log admin login response
+        console.log('\n[LOGIN] Admin login response sent');
+        console.log('Admin Username:', user.username);
+        console.log('Admin Email:', user.email);
+        console.log('JWT Token:', token.substring(0, 50) + '...');
+        console.log('Session ID (regenerated):', req.sessionID);
+        console.log('Login Time:', new Date().toISOString());
 
         return res.status(200).json({
           success: true,
@@ -849,26 +1145,22 @@ exports.loginUser = async (req, res) => {
     await user.save();
 
     // Send OTP via email
-    // 🔍 Check email configuration
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('\n❌ EMAIL CONFIGURATION ERROR:');
-      console.error('═══════════════════════════════════════');
-      console.error('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : '❌ NOT SET');
-      console.error('EMAIL_PASS:', process.env.EMAIL_PASS ? 'Set' : '❌ NOT SET');
-      console.error('Please configure EMAIL_USER and EMAIL_PASS in your .env file');
-      console.error('═══════════════════════════════════════\n');
+      // Check email configuration
+      if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.error('\n[EMAIL] Configuration error');
+        console.error('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'NOT SET');
+        console.error('EMAIL_PASS:', process.env.EMAIL_PASS ? 'Set' : 'NOT SET');
+        console.error('Please configure EMAIL_USER and EMAIL_PASS in your .env file');
 
-      // Still return success but log the OTP in console for testing
-      console.log('\n⚠️  EMAIL NOT CONFIGURED - OTP LOGGED TO CONSOLE:');
-      console.log('═══════════════════════════════════════');
-      console.log('📧 Email should be sent to:', user.email);
-      console.log('🔢 OTP Code:', otp);
-      console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
-      console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
-      console.log('⏱️  OTP Valid For: 10 minutes');
-      console.log('═══════════════════════════════════════\n');
+        // Still return success but log the OTP in console for testing
+        console.log('\n[EMAIL] Email not configured - OTP logged to console');
+        console.log('Email should be sent to:', user.email);
+        console.log('OTP Code:', otp);
+        console.log('OTP Created At:', otpCreatedAt.toISOString());
+        console.log('OTP Expiry:', otpExpiry.toISOString());
+        console.log('OTP Valid For: 10 minutes');
 
-      // ✅ SESSION LOGGING: Log session information during login (before OTP verification)
+      // Session logging: Log session information during login (before OTP verification)
       if (req.session && req.sessionID) {
         console.log(`\n📋 Session ID: ${req.sessionID}`);
         const sessionData = {
@@ -884,7 +1176,7 @@ exports.loginUser = async (req, res) => {
         console.log('📋 Session Data:', JSON.stringify(sessionData, null, 2));
       }
 
-      // ✅ SESSION INFO: Include session information in response for OTP page
+      // Session info: Include session information in response for OTP page
       const sessionInfo = req.session && req.sessionID ? {
         sessionId: req.sessionID,
         sessionData: {
@@ -910,7 +1202,7 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    // ✅ Use Ethereal Email for OTP - Beautiful email preview with real email format
+    // Use Ethereal Email for OTP - Beautiful email preview with real email format
     // Ethereal Email creates a fake SMTP account for testing - perfect for development
     // The email will be viewable in a beautiful web interface with preview URL
     let transporter;
@@ -918,7 +1210,7 @@ exports.loginUser = async (req, res) => {
     
     try {
       // Create Ethereal test account (automatically generated)
-      console.log('\n📧 Creating Ethereal Email account for OTP...');
+      console.log('\n[EMAIL] Creating Ethereal Email account for OTP...');
       etherealAccount = await nodemailer.createTestAccount();
       
       // Create transporter using Ethereal account
@@ -935,24 +1227,24 @@ exports.loginUser = async (req, res) => {
         }
       });
       
-      console.log('✅ Ethereal Email account created successfully');
-      console.log('📧 Ethereal User:', etherealAccount.user);
-      console.log('🔐 Ethereal Pass:', etherealAccount.pass);
+        console.log('[EMAIL] Ethereal Email account created successfully');
+        console.log('Ethereal User:', etherealAccount.user);
+        console.log('Ethereal Pass:', etherealAccount.pass);
     } catch (etherealError) {
-      console.error('❌ Failed to create Ethereal account:', etherealError);
+        console.error('[EMAIL] Failed to create Ethereal account:', etherealError);
       // Fallback: Still return OTP in response even if Ethereal fails
       transporter = null;
     }
 
-    // ✅ NO BLOCKING VERIFICATION - Response sent immediately, email sent in background
+    // No blocking verification - Response sent immediately, email sent in background
 
-    // ✅ Beautiful email template with professional design
+    // Beautiful email template with professional design
     const mailOptions = {
       from: `"BHOKBHOJ" <${etherealAccount ? etherealAccount.user : 'noreply@bhokbhoj.com'}>`,
       to: user.email,
-      subject: "🔐 Your Login OTP - BHOKBHOJ",
+      subject: "Your Login OTP - BHOKBHOJ",
       // Plain text version for better compatibility
-      text: `🍽️ BHOKBHOJ - Your Login OTP
+      text: `BHOKBHOJ - Your Login OTP
 
 Hello ${user.fullname || user.username},
 
@@ -960,7 +1252,7 @@ You requested to login to your BHOKBHOJ account. Please use the OTP below to com
 
 ${otp}
 
-⏰ Important: This OTP will expire in 10 minutes for security reasons.
+Important: This OTP will expire in 10 minutes for security reasons.
 
 If you didn't request this login, please ignore this email and ensure your account is secure.
 
@@ -1087,10 +1379,10 @@ This is an automated email. Please do not reply to this message.`,
     let emailMessageId = null;
     
     if (transporter) {
-      console.log('\n📧 Sending Ethereal OTP email...');
-      console.log('📧 To:', user.email);
-      console.log('📧 From (Ethereal):', etherealAccount.user);
-      console.log('🔢 OTP Code:', otp);
+      console.log('\n[EMAIL] Sending Ethereal OTP email...');
+      console.log('To:', user.email);
+      console.log('From (Ethereal):', etherealAccount.user);
+      console.log('OTP Code:', otp);
 
       // Send email and get preview URL (Ethereal is fast, so this won't block long)
       try {
@@ -1098,55 +1390,44 @@ This is an automated email. Please do not reply to this message.`,
         emailMessageId = info.messageId;
         emailPreviewUrl = nodemailer.getTestMessageUrl(info);
         
-        console.log('\n✅ ✅ ✅ ETHEREAL OTP EMAIL SENT SUCCESSFULLY ✅ ✅ ✅');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('📧 To:', user.email);
-        console.log('📧 From (Ethereal):', etherealAccount.user);
-        console.log('🔢 OTP Code:', otp);
-        console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
-        console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
-        console.log('⏱️  OTP Valid For: 10 minutes');
-        console.log('📨 Message ID:', info.messageId);
-        console.log('🌐 🌐 🌐 EMAIL PREVIEW URL 🌐 🌐 🌐');
-        console.log('🌐', emailPreviewUrl || 'Not available');
-        console.log('📬 Response:', info.response);
-        console.log('📬 Accepted:', info.accepted);
-        console.log('🕐 Sent At:', new Date().toISOString());
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('💡 💡 💡 VIEW EMAIL IN REAL FORMAT 💡 💡 💡');
-        console.log('💡 Open the preview URL above in your browser to see the beautiful email');
-        console.log('💡 The email will be displayed in a professional, real email format');
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        console.log('\n[EMAIL] Ethereal OTP email sent successfully');
+        console.log('To:', user.email);
+        console.log('From (Ethereal):', etherealAccount.user);
+        console.log('OTP Code:', otp);
+        console.log('OTP Created At:', otpCreatedAt.toISOString());
+        console.log('OTP Expiry:', otpExpiry.toISOString());
+        console.log('OTP Valid For: 10 minutes');
+        console.log('Message ID:', info.messageId);
+        console.log('Email Preview URL:', emailPreviewUrl || 'Not available');
+        console.log('Response:', info.response);
+        console.log('Accepted:', info.accepted);
+        console.log('Sent At:', new Date().toISOString());
+        console.log('Open the preview URL above in your browser to see the email');
       } catch (err) {
-        console.error('\n❌ ETHEREAL EMAIL SENDING ERROR:');
-        console.error('═══════════════════════════════════════');
+        console.error('\n[EMAIL] Ethereal email sending error');
         console.error('Error Code:', err.code);
         console.error('Error Message:', err.message);
         console.error('Error Response:', err.response);
         console.error('To Email:', user.email);
-        console.error('═══════════════════════════════════════\n');
 
-        // ALWAYS log OTP to console when email fails - CRITICAL for user access
-        console.log('\n⚠️  ⚠️  ⚠️  EMAIL SENDING FAILED - USE OTP BELOW ⚠️  ⚠️  ⚠️');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('📧 Email should be sent to:', user.email);
-        console.log('👤 Username:', user.username);
-        console.log('🔢 🔐 CURRENT OTP CODE:', otp);
-        console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
-        console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
-        console.log('⏱️  OTP Valid For: 10 minutes');
-        console.log('🕐 Generated At:', new Date().toISOString());
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('💡 IMPORTANT: Use the OTP code above to login');
-        console.log('💡 This OTP is valid for 10 minutes');
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        // Always log OTP to console when email fails - critical for user access
+        console.log('\n[EMAIL] Email sending failed - use OTP below');
+        console.log('Email should be sent to:', user.email);
+        console.log('Username:', user.username);
+        console.log('CURRENT OTP CODE:', otp);
+        console.log('OTP Created At:', otpCreatedAt.toISOString());
+        console.log('OTP Expiry:', otpExpiry.toISOString());
+        console.log('OTP Valid For: 10 minutes');
+        console.log('Generated At:', new Date().toISOString());
+        console.log('IMPORTANT: Use the OTP code above to login');
+        console.log('This OTP is valid for 10 minutes');
       }
     } else {
-      console.log('\n⚠️  Ethereal Email transporter not available - OTP logged to console');
-      console.log('🔢 OTP Code:', otp);
+      console.log('\n[EMAIL] Ethereal Email transporter not available - OTP logged to console');
+      console.log('OTP Code:', otp);
     }
 
-    // ✅ Return response with Ethereal email preview URL
+    // Return response with Ethereal email preview URL
     // Always include OTP in response as backup
     const response = {
       success: true,
@@ -1160,7 +1441,13 @@ This is an automated email. Please do not reply to this message.`,
       emailProvider: "ethereal",
       // Always include OTP as fallback
       otp: otp,
+      // OTP expiry: Include all OTP expiry information in response
+      otpCreatedAt: otpCreatedAt.toISOString(),
       otpExpiry: otpExpiry.toISOString(),
+      otpExpiryFormatted: otpExpiryFormatted,
+      otpTimeRemainingMinutes: otpTimeRemainingMinutes,
+      otpRemainingTimeFormatted: otpRemainingTimeFormatted,
+      otpVerified: false, // OTP not verified yet
       ...(passwordExpiryWarning && { warning: passwordExpiryWarning }),
       // Ethereal email preview URL - open this to see the beautiful email
       emailPreviewUrl: emailPreviewUrl,
@@ -1187,31 +1474,29 @@ This is an automated email. Please do not reply to this message.`,
       } : null
     };
 
-    // 🔍 BURP SUITE TESTING: Log OTP generation response
-    console.log('\n✅ OTP LOGIN RESPONSE SENT (INSTANT):');
-    console.log('═══════════════════════════════════════');
-    console.log('👤 Username:', user.username);
-    console.log('📧 Email:', user.email);
-    console.log('🔢 Generated OTP:', otp);
-    console.log('🕐 OTP Created At:', otpCreatedAt.toISOString());
-    console.log('⏰ OTP Expiry:', otpExpiry.toISOString());
-    console.log('⏱️  OTP Valid For: 10 minutes');
-    console.log('🆔 User ID:', user._id);
-    console.log('⚡ Response Time: < 100ms (email sending in background)');
-    console.log('🕐 Request Time:', new Date().toISOString());
-    console.log('═══════════════════════════════════════\n');
+    // Log OTP generation response
+    console.log('\n[LOGIN] OTP login response sent (instant)');
+    console.log('Username:', user.username);
+    console.log('Email:', user.email);
+    console.log('Generated OTP:', otp);
+    console.log('OTP Created At:', otpCreatedAt.toISOString());
+    console.log('OTP Expiry:', otpExpiry.toISOString());
+    console.log('OTP Valid For: 10 minutes');
+    console.log('User ID:', user._id);
+    console.log('Response Time: < 100ms (email sending in background)');
+    console.log('Request Time:', new Date().toISOString());
 
     // Return response immediately - don't wait for email
     return res.status(200).json(response);
   } catch (err) {
     console.error('\n❌ LOGIN ERROR (500):');
-    console.error('═══════════════════════════════════════');
+    console.error('');
     console.error('Error Message:', err.message);
     console.error('Error Stack:', err.stack);
     console.error('Error Name:', err.name);
     console.error('Error Code:', err.code);
     console.error('Request Body:', JSON.stringify(req.body, null, 2));
-    console.error('═══════════════════════════════════════\n');
+    console.error('\n');
 
     return res.status(500).json({
       success: false,
@@ -1225,7 +1510,7 @@ This is an automated email. Please do not reply to this message.`,
 exports.verifyOTP = async (req, res) => {
   // 🔍 BURP SUITE TESTING: Log OTP verification request details
   console.log('\n🔍 OTP VERIFICATION REQUEST INTERCEPTED:');
-  console.log('═══════════════════════════════════════');
+  console.log('');
   console.log('🆔 User ID:', req.body.userId);
   console.log('🔢 OTP Code:', req.body.otp);
   console.log('📧 Email (if provided):', req.body.email || 'Not provided');
@@ -1233,7 +1518,7 @@ exports.verifyOTP = async (req, res) => {
   console.log('🌐 Origin:', req.headers.origin);
   console.log('🔗 Referer:', req.headers.referer);
   console.log('🕐 Timestamp:', new Date().toISOString());
-  console.log('═══════════════════════════════════════\n');
+  console.log('\n');
 
   const { userId, otp } = req.body;
 
@@ -1296,6 +1581,11 @@ exports.verifyOTP = async (req, res) => {
     // ✅ SECURED: Reset login attempts on successful OTP verification
     user.loginAttempts = 0;
     user.accountLockedUntil = null;
+    // ✅ OLD PASSWORD LOGIN: Disable old password login after successful OTP verification
+    if (user.allowOldPasswordLogin) {
+      user.allowOldPasswordLogin = false;
+      console.log('✅ OTP verification successful - disabling old password login');
+    }
     await user.save();
 
     // ✅ PASSWORD EXPIRY: Check if password has expired
@@ -1378,7 +1668,7 @@ exports.verifyOTP = async (req, res) => {
 
       // 🔍 BURP SUITE TESTING: Log OTP verification response
       console.log('\n✅ OTP VERIFICATION RESPONSE SENT:');
-      console.log('═══════════════════════════════════════');
+      console.log('');
       console.log('🆔 User ID:', user._id);
       console.log('👤 Username:', user.username);
       console.log('📧 Email:', user.email);
@@ -1387,7 +1677,7 @@ exports.verifyOTP = async (req, res) => {
       console.log('🔐 Session ID (regenerated):', req.sessionID);
       console.log('⏰ Token Expires In: 7 days');
       console.log('🕐 Verification Time:', new Date().toISOString());
-      console.log('═══════════════════════════════════════\n');
+      console.log('\n');
 
       // ✅ SESSION LOGGING: Log session information after OTP verification
       if (req.session && req.sessionID) {
@@ -1438,6 +1728,16 @@ exports.verifyOTP = async (req, res) => {
         phone: user.phone,
         address: user.address,
         role: user.role || 'user',
+        // ✅ OTP EXPIRATION: Include OTP expiration related information
+        otpExpiry: user.otpExpiry,
+        otpExpiryFormatted: user.otpExpiryFormatted,
+        otpTimeRemainingMinutes: user.otpTimeRemainingMinutes,
+        otpRemainingTimeFormatted: user.otpRemainingTimeFormatted,
+        otpCreatedAt: user.otpCreatedAt,
+        otpVerified: user.otpVerified,
+        // ✅ PASSWORD INFO: Include password related information
+        passwordChangedAt: user.passwordChangedAt,
+        passwordExpiresAt: user.passwordExpiresAt,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       };
@@ -1464,7 +1764,7 @@ exports.verifyOTP = async (req, res) => {
 exports.updateUser = async (req, res) => {
   // 🔍 BURP SUITE TESTING: Log update profile request details
   console.log('\n🔍 UPDATE PROFILE REQUEST INTERCEPTED:');
-  console.log('═══════════════════════════════════════');
+  console.log('');
   console.log('👤 User ID (from token):', req.user ? req.user._id : 'Not authenticated');
   console.log('👤 Current Username:', req.user ? req.user.username : 'Not authenticated');
   console.log('📧 Current Email:', req.user ? req.user.email : 'Not authenticated');
@@ -1479,7 +1779,7 @@ exports.updateUser = async (req, res) => {
   console.log('🌐 Origin:', req.headers.origin);
   console.log('🔗 Referer:', req.headers.referer);
   console.log('🕐 Timestamp:', new Date().toISOString());
-  console.log('═══════════════════════════════════════\n');
+  console.log('\n');
 
   // ✅ SECURITY: Get user ID from JWT token (req.user), not from URL parameter
   const userId = req.user._id;
@@ -1536,7 +1836,7 @@ exports.updateUser = async (req, res) => {
 
     // 🔍 BURP SUITE TESTING: Log update profile response
     console.log('\n✅ UPDATE PROFILE RESPONSE SENT:');
-    console.log('═══════════════════════════════════════');
+    console.log('');
     console.log('👤 User ID:', updatedUser._id);
     console.log('👤 Updated Username:', updatedUser.username);
     console.log('📧 Updated Email:', updatedUser.email);
@@ -1546,7 +1846,7 @@ exports.updateUser = async (req, res) => {
     console.log('🔑 Password Changed:', password ? 'Yes' : 'No');
     console.log('📧 Email Changed:', email && email !== user.email ? 'Yes' : 'No');
     console.log('🕐 Update Time:', new Date().toISOString());
-    console.log('═══════════════════════════════════════\n');
+    console.log('\n');
 
     return res.json({ success: true, message: "User updated", user: updatedUser });
   } catch (error) {
@@ -1599,13 +1899,13 @@ exports.updateUserProfile = async (req, res) => {
     const attemptedProtectedFields = protectedFields.filter(field => req.body[field] !== undefined);
     if (attemptedProtectedFields.length > 0) {
       console.warn('\n🚨 SECURITY WARNING: Attempted to update protected fields');
-      console.warn('═══════════════════════════════════════');
+      console.warn('');
       console.warn('👤 User ID:', userId);
       console.warn('👤 Username:', req.user.username);
       console.warn('🔒 Protected fields attempted:', attemptedProtectedFields.join(', '));
       console.warn('🌐 IP Address:', req.ip || req.connection.remoteAddress);
       console.warn('🕐 Timestamp:', new Date().toISOString());
-      console.warn('═══════════════════════════════════════\n');
+      console.warn('\n');
     }
 
     // Check if there's anything to update
@@ -1739,12 +2039,12 @@ exports.updateUserProfile = async (req, res) => {
 
   } catch (error) {
     console.error('\n❌ UPDATE USER PROFILE ERROR:');
-    console.error('═══════════════════════════════════════');
+    console.error('');
     console.error('Error Message:', error.message);
     console.error('Error Stack:', error.stack);
     console.error('User ID:', req.user ? req.user._id : 'Not authenticated');
     console.error('Request Body:', JSON.stringify(req.body, null, 2));
-    console.error('═══════════════════════════════════════\n');
+    console.error('\n');
 
     // Handle specific MongoDB errors
     if (error.name === 'ValidationError') {
@@ -1782,7 +2082,7 @@ exports.sendResetLink = async (req, res) => {
     const normalizedEmail = email ? String(email).toLowerCase().trim() : '';
     
     console.log('\n🔍 FORGOT PASSWORD REQUEST:');
-    console.log('═══════════════════════════════════════');
+    console.log('');
     console.log('📧 Requested Email (original):', email);
     console.log('📧 Requested Email (normalized):', normalizedEmail);
     
@@ -1809,7 +2109,7 @@ exports.sendResetLink = async (req, res) => {
         console.log('   -', u.email, '(username:', u.username + ')');
       });
     }
-    console.log('═══════════════════════════════════════\n');
+    console.log('\n');
 
     if (!user) {
       // Return specific error for unregistered email
@@ -1881,22 +2181,22 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Check if new password is the same as current password
+    // ✅ PASSWORD REUSE PREVENTION: Check if new password is the same as current password
     const isSamePassword = await bcrypt.compare(password, user.password);
     if (isSamePassword) {
       return res.status(400).json({
         success: false,
-        message: "New password must be different from your current password"
+        message: "New password must be different from your current password. Please choose a stronger, unique password."
       });
     }
 
-    // Check password reuse (check against password history)
+    // ✅ PASSWORD REUSE PREVENTION: Check if new password was used in last 3 passwords
     if (user.checkPasswordReuse) {
       const isReused = await user.checkPasswordReuse(password);
       if (isReused) {
         return res.status(400).json({
           success: false,
-          message: "You cannot reuse a previous password. Please choose a different password."
+          message: "This password was previously used. For security reasons, you cannot reuse any of your last 3 passwords. Please choose a stronger, unique password that you haven't used before."
         });
       }
     }
@@ -1966,7 +2266,18 @@ exports.getCurrentUser = async (req, res) => {
       email: user.email,
       phone: user.phone,
       address: user.address,
-      favorites: user.favorites,
+      // ✅ OTP EXPIRATION: Include OTP expiration related information
+      otpExpiry: user.otpExpiry,
+      otpExpiryFormatted: user.otpExpiryFormatted,
+      otpTimeRemainingMinutes: user.otpTimeRemainingMinutes,
+      otpRemainingTimeFormatted: user.otpRemainingTimeFormatted,
+      otpCreatedAt: user.otpCreatedAt,
+      otpVerified: user.otpVerified,
+      // ✅ PASSWORD INFO: Include password related information
+      passwordChangedAt: user.passwordChangedAt,
+      passwordExpiresAt: user.passwordExpiresAt,
+      // ✅ PASSWORD HISTORY: Include password history (array of hashed passwords - for count only)
+      passwordHistory: user.passwordHistory || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt
     };
@@ -2026,7 +2337,7 @@ exports.deleteUser = async (req, res) => {
 exports.changePassword = async (req, res) => {
   // 🔍 BURP SUITE TESTING: Log change password request details
   console.log('\n🔍 CHANGE PASSWORD REQUEST INTERCEPTED:');
-  console.log('═══════════════════════════════════════');
+  console.log('');
   console.log('👤 User ID (from token):', req.user ? req.user._id : 'Not authenticated');
   console.log('👤 Username:', req.user ? req.user.username : 'Not authenticated');
   console.log('📧 Email:', req.user ? req.user.email : 'Not authenticated');
@@ -2036,7 +2347,7 @@ exports.changePassword = async (req, res) => {
   console.log('🌐 Origin:', req.headers.origin);
   console.log('🔗 Referer:', req.headers.referer);
   console.log('🕐 Timestamp:', new Date().toISOString());
-  console.log('═══════════════════════════════════════\n');
+  console.log('\n');
 
   const { currentPassword, newPassword, confirmPassword } = req.body;
 
@@ -2087,13 +2398,22 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // ✅ PASSWORD REUSE PREVENTION: Check if new password was used in last 3 passwords
+    // ✅ PASSWORD REUSE PREVENTION: Check if new password was used before (current password or last 3 passwords)
     const isPasswordReused = await user.checkPasswordReuse(newPassword);
     if (isPasswordReused) {
-      return res.status(400).json({
-        success: false,
-        message: "New password cannot be same as your last 3 passwords"
-      });
+      // Determine if it's the current password or a previous one
+      const isCurrentPassword = await bcrypt.compare(newPassword, user.password);
+      if (isCurrentPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "New password must be different from your current password. Please choose a stronger, unique password."
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "This password was previously used. For security reasons, you cannot reuse any of your last 3 passwords. Please choose a stronger, unique password that you haven't used before."
+        });
+      }
     }
 
     // ✅ PASSWORD REUSE PREVENTION: Add current password hash to password history
@@ -2118,6 +2438,8 @@ exports.changePassword = async (req, res) => {
     user.password = hashedNewPassword;
     user.passwordChangedAt = new Date();
     user.passwordExpiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+    // ✅ OLD PASSWORD LOGIN: Allow old password to work once after password change (until user logs in with new password)
+    user.allowOldPasswordLogin = true;
     await user.save();
 
     // ✅ SECURITY NOTIFICATION: Send password change notification
@@ -2135,13 +2457,13 @@ exports.changePassword = async (req, res) => {
 
     // 🔍 BURP SUITE TESTING: Log change password response
     console.log('\n✅ CHANGE PASSWORD RESPONSE SENT:');
-    console.log('═══════════════════════════════════════');
+    console.log('');
     console.log('👤 User ID:', userId);
     console.log('👤 Username:', user.username);
     console.log('📧 Email:', user.email);
     console.log('🔑 Password Changed: Yes');
     console.log('🕐 Change Time:', new Date().toISOString());
-    console.log('═══════════════════════════════════════\n');
+    console.log('\n');
 
     return res.status(200).json({
       success: true,

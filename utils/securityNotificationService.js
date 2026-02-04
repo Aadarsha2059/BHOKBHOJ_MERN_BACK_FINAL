@@ -22,7 +22,7 @@ const getTransporter = async () => {
       
       if (!validation.valid) {
         console.error('\n❌ ❌ ❌ EMAIL CONFIGURATION ERROR ❌ ❌ ❌');
-        console.error('═══════════════════════════════════════════════════════════════');
+        console.error('');
         console.error('📧 EMAIL_USER:', validation.emailUser);
         console.error('🔐 EMAIL_PASS:', validation.emailPass);
         console.error('\n🚨 Validation Errors:');
@@ -33,10 +33,10 @@ const getTransporter = async () => {
         validation.suggestions.forEach((suggestion, index) => {
           console.error(`   ${index + 1}. ${suggestion}`);
         });
-        console.error('═══════════════════════════════════════════════════════════════');
+        console.error('');
         console.error(getAppPasswordInstructions());
         console.error('⚠️  Falling back to Ethereal Email for testing');
-        console.error('═══════════════════════════════════════════════════════════════\n');
+        console.error('\n');
         
         // Fall back to Ethereal with default config
         const etherealAccount = await nodemailer.createTestAccount();
@@ -94,7 +94,7 @@ const getTransporter = async () => {
         console.log('✅ App Password authentication successful');
       } catch (verifyError) {
         console.error('\n❌ ❌ ❌ GMAIL SMTP VERIFICATION FAILED ❌ ❌ ❌');
-        console.error('═══════════════════════════════════════════════════════════════');
+        console.error('');
         console.error('Error Code:', verifyError.code);
         console.error('Error Message:', verifyError.message);
         
@@ -115,7 +115,7 @@ const getTransporter = async () => {
         }
         
         console.error('\n⚠️  Falling back to Ethereal Email for testing');
-        console.error('═══════════════════════════════════════════════════════════════\n');
+        console.error('\n');
         
         // Fall back to Ethereal if Gmail verification fails
         const etherealAccount = await nodemailer.createTestAccount();
@@ -348,7 +348,7 @@ BHOKBHOJ Security Team 🍴`,
     const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) : null;
 
     console.log('\n✅ ✅ ✅ SUSPICIOUS ACTIVITY ALERT EMAIL SENT ✅ ✅ ✅');
-    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
     console.log('📧 Type: Suspicious Activity Alert');
     console.log('📧 To:', user.email);
     console.log('👤 User:', user.username || 'Unknown');
@@ -375,12 +375,12 @@ BHOKBHOJ Security Team 🍴`,
       console.log('💡 If email not received, check spam/junk folder');
     }
     
-    console.log('═══════════════════════════════════════════════════════════════\n');
+    console.log('\n');
 
     return { success: true, messageId: info.messageId, previewUrl, isEthereal };
   } catch (error) {
     console.error('\n❌ ❌ ❌ SUSPICIOUS ACTIVITY ALERT EMAIL ERROR ❌ ❌ ❌');
-    console.error('═══════════════════════════════════════════════════════════════');
+    console.error('');
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     console.error('Error Code:', error.code);
@@ -408,7 +408,7 @@ BHOKBHOJ Security Team 🍴`,
       console.error('   3. Check Gmail "Less secure app access" or enable 2FA with App Password');
       console.error('   4. Ensure internet connection is available');
     }
-    console.error('═══════════════════════════════════════════════════════════════\n');
+    console.error('\n');
     return { success: false, error: error.message, errorCode: error.code };
   }
 };
@@ -569,7 +569,7 @@ BHOKBHOJ Security Team 🍴`,
     const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) : null;
 
     console.log('\n✅ ✅ ✅ PASSWORD CHANGE NOTIFICATION EMAIL SENT ✅ ✅ ✅');
-    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
     console.log('📧 Type: Password Change Notification');
     console.log('📧 To:', user.email);
     console.log('👤 User:', user.username);
@@ -577,7 +577,7 @@ BHOKBHOJ Security Team 🍴`,
     if (previewUrl) {
       console.log('🌐 Preview URL:', previewUrl);
     }
-    console.log('═══════════════════════════════════════════════════════════════\n');
+    console.log('\n');
 
     return { success: true, messageId: info.messageId, previewUrl };
   } catch (error) {
@@ -609,53 +609,67 @@ BHOKBHOJ Security Team 🍴`,
  */
 const sendUnauthorizedLoginAttemptAlert = async (user, attemptDetails) => {
   try {
-    console.log('\n📧 Preparing to send unauthorized login attempt alert...');
-    console.log('👤 User:', user.username || 'Unknown');
-    console.log('📧 To:', user.email);
+    console.log('\n[EMAIL] Preparing to send unauthorized login attempt alert');
+    console.log('User:', user.username || 'Unknown');
+    console.log('Email (received):', user.email);
+    console.log('Email type:', typeof user.email);
+    console.log('Email length:', user.email ? user.email.length : 0);
     
     const emailConfig = await getTransporter();
     if (!emailConfig) {
-      console.error('❌ Email transporter not available for unauthorized login notification');
-      console.error('⚠️  Please check your email configuration (EMAIL_USER and EMAIL_PASS)');
+      console.error('[EMAIL] Email transporter not available for unauthorized login notification');
+      console.error('Please check your email configuration (EMAIL_USER and EMAIL_PASS)');
       return { success: false, error: 'Email transporter not available' };
     }
 
     const { transporter, isEthereal, etherealAccount } = emailConfig;
     
     if (isEthereal) {
-      console.log('📧 Using Ethereal Email - Preview URL will be generated');
+      console.log('[EMAIL] Using Ethereal Email - Preview URL will be generated');
     } else {
-      console.log('📧 Using Gmail - Email will be sent to:', user.email);
+      console.log('[EMAIL] Using Gmail - Email will be sent to:', user.email);
     }
+    // Validate email: Ensure email is valid before sending
+    if (!user.email || typeof user.email !== 'string' || !user.email.includes('@')) {
+      console.error('[EMAIL] Invalid email address:', user.email);
+      console.error('[EMAIL] Cannot send unauthorized login attempt alert - invalid email');
+      return { success: false, error: 'Invalid email address' };
+    }
+    
     const ipAddress = attemptDetails.ipAddress || 'Unknown';
     const location = attemptDetails.location || 'Unknown Location';
     const timestamp = attemptDetails.timestamp || new Date().toISOString();
     const deviceInfo = attemptDetails.deviceInfo || 'Unknown Device';
     const failedAttempts = attemptDetails.failedAttempts || 0;
 
+    console.log('[EMAIL] Email validated successfully:', user.email);
+    console.log('[EMAIL] Attempt details:', { ipAddress, location, timestamp, deviceInfo, failedAttempts });
+
     const mailOptions = {
       from: `"BHOKBHOJ Security" <${isEthereal ? (etherealAccount?.user || envConfig.email.from) : (envConfig.email.user || envConfig.email.from)}>`,
       to: user.email,
-      subject: `🚨 Unauthorized Login Attempt Detected - BHOKBHOJ`,
-      text: `Unauthorized Login Attempt - Security Alert
+      subject: `Unauthorized Login Attempt - BHOKBHOJ`,
+      text: `Unauthorized Login Attempt Detected
 
 Hello ${user.fullname || user.username},
 
 We detected an unauthorized login attempt on your BHOKBHOJ account.
 
-Attempt Details:
-- Time: ${timestamp}
-- IP Address: ${ipAddress}
-- Location: ${location}
-- Device: ${deviceInfo}
-- Failed Attempts: ${failedAttempts}
+Time: ${timestamp}
+IP Address: ${ipAddress}
+Location: ${location}
+Device: ${deviceInfo}
+Failed Attempts: ${failedAttempts}
 
-If this was you and you're having trouble logging in, please use the "Forgot Password" feature to reset your password.
+⚠️ Important: If this was NOT you, please secure your account immediately by changing your password. If this was you and you're having trouble logging in, please use the "Forgot Password" feature.
 
-If this was NOT you, please secure your account immediately by changing your password.
+This is a security notification. If the login attempt was authorized by you, no action is required.
 
 Best regards,
-BHOKBHOJ Security Team 🍴`,
+BHOKBHOJ Security Team 🍴
+
+© ${new Date().getFullYear()} BHOKBHOJ. All rights reserved.
+This is an automated security notification. Please do not reply to this message.`,
       html: `
 <!DOCTYPE html>
 <html lang="en">
@@ -665,89 +679,47 @@ BHOKBHOJ Security Team 🍴`,
     <title>Unauthorized Login Attempt - BHOKBHOJ</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 40px 20px;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="padding: 20px;">
         <tr>
             <td align="center">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 40px 30px; text-align: center;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 36px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">
-                                🚨 Unauthorized Login Attempt
+                        <td style="background: #dc2626; padding: 20px; text-align: center;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">
+                                🚨 Unauthorized Login Attempt Detected
                             </h1>
-                            <p style="margin: 10px 0 0 0; color: #fecaca; font-size: 16px; font-weight: 300;">
-                                Security Alert
-                            </p>
                         </td>
                     </tr>
                     
                     <!-- Content -->
                     <tr>
-                        <td style="padding: 40px 30px;">
-                            <h2 style="margin: 0 0 20px 0; color: #0f172a; font-size: 28px; font-weight: 600;">
-                                Unauthorized Login Attempt Detected
-                            </h2>
-                            
+                        <td style="padding: 30px;">
                             <p style="margin: 0 0 15px 0; color: #475569; font-size: 16px; line-height: 1.6;">
-                                Hello <strong style="color: #0f172a;">${user.fullname || user.username}</strong>,
+                                Hello <strong>${user.fullname || user.username}</strong>,
                             </p>
                             
-                            <p style="margin: 0 0 30px 0; color: #475569; font-size: 16px; line-height: 1.6;">
+                            <p style="margin: 0 0 20px 0; color: #475569; font-size: 16px; line-height: 1.6;">
                                 We detected an unauthorized login attempt on your BHOKBHOJ account. Please review the details below:
                             </p>
                             
-                            <!-- Attempt Details Box -->
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                <tr>
-                                    <td style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                            <tr>
-                                                <td style="padding: 5px 0;">
-                                                    <strong style="color: #991b1b;">Time:</strong>
-                                                    <span style="color: #475569; margin-left: 10px;">${timestamp}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding: 5px 0;">
-                                                    <strong style="color: #991b1b;">IP Address:</strong>
-                                                    <span style="color: #475569; margin-left: 10px;">${ipAddress}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding: 5px 0;">
-                                                    <strong style="color: #991b1b;">Location:</strong>
-                                                    <span style="color: #475569; margin-left: 10px;">${location}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding: 5px 0;">
-                                                    <strong style="color: #991b1b;">Device:</strong>
-                                                    <span style="color: #475569; margin-left: 10px;">${deviceInfo}</span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="padding: 5px 0;">
-                                                    <strong style="color: #991b1b;">Failed Attempts:</strong>
-                                                    <span style="color: #475569; margin-left: 10px;">${failedAttempts}</span>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                            </table>
+                            <!-- Attempt Details -->
+                            <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                                <p style="margin: 5px 0; color: #475569; font-size: 14px;"><strong>Time:</strong> ${timestamp}</p>
+                                <p style="margin: 5px 0; color: #475569; font-size: 14px;"><strong>IP Address:</strong> ${ipAddress}</p>
+                                <p style="margin: 5px 0; color: #475569; font-size: 14px;"><strong>Location:</strong> ${location}</p>
+                                <p style="margin: 5px 0; color: #475569; font-size: 14px;"><strong>Device:</strong> ${deviceInfo}</p>
+                                <p style="margin: 5px 0; color: #475569; font-size: 14px;"><strong>Failed Attempts:</strong> ${failedAttempts}</p>
+                            </div>
                             
-                            <!-- Warning Box -->
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                <tr>
-                                    <td style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 18px 20px; border-radius: 8px; margin: 20px 0;">
-                                        <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
-                                            ⚠️ <strong>Important:</strong> If this was NOT you, please secure your account immediately by changing your password. If this was you and you're having trouble logging in, please use the "Forgot Password" feature.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
+                            <!-- Warning -->
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
+                                    ⚠️ <strong>Important:</strong> If this was NOT you, please secure your account immediately by changing your password. If this was you and you're having trouble logging in, please use the "Forgot Password" feature.
+                                </p>
+                            </div>
                             
-                            <p style="margin: 30px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+                            <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
                                 This is a security notification. If the login attempt was authorized by you, no action is required.
                             </p>
                         </td>
@@ -755,12 +727,12 @@ BHOKBHOJ Security Team 🍴`,
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="background: #f8fafc; padding: 30px; border-top: 1px solid #e2e8f0;">
-                            <p style="margin: 0 0 10px 0; color: #475569; font-size: 14px; line-height: 1.6;">
+                        <td style="background: #f8fafc; padding: 20px; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 10px 0; color: #475569; font-size: 14px;">
                                 Best regards,<br>
-                                <strong style="color: #dc2626; font-size: 16px;">BHOKBHOJ Security Team</strong> 🍴
+                                <strong style="color: #dc2626;">BHOKBHOJ Security Team</strong> 🍴
                             </p>
-                            <p style="margin: 20px 0 5px 0; color: #94a3b8; font-size: 12px; text-align: center;">
+                            <p style="margin: 15px 0 5px 0; color: #94a3b8; font-size: 12px; text-align: center;">
                                 © ${new Date().getFullYear()} BHOKBHOJ. All rights reserved.
                             </p>
                             <p style="margin: 0; color: #cbd5e1; font-size: 11px; text-align: center;">
@@ -781,41 +753,37 @@ BHOKBHOJ Security Team 🍴`,
     const info = await transporter.sendMail(mailOptions);
     const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) : null;
 
-    console.log('\n✅ ✅ ✅ UNAUTHORIZED LOGIN ATTEMPT ALERT EMAIL SENT ✅ ✅ ✅');
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('📧 Type: Unauthorized Login Attempt Alert');
-    console.log('📧 To:', user.email);
-    console.log('👤 User:', user.username || 'Unknown');
-    console.log('🌐 IP Address:', ipAddress);
-    console.log('📍 Location:', location);
-    console.log('📱 Device:', deviceInfo);
-    console.log('❌ Failed Attempts:', failedAttempts);
-    console.log('🕐 Timestamp:', timestamp);
+    console.log('\n[EMAIL] Unauthorized login attempt alert email sent');
+    console.log('Type: Unauthorized Login Attempt Alert');
+    console.log('To:', user.email);
+    console.log('User:', user.username || 'Unknown');
+    console.log('IP Address:', ipAddress);
+    console.log('Location:', location);
+    console.log('Device:', deviceInfo);
+    console.log('Failed Attempts:', failedAttempts);
+    console.log('Timestamp:', timestamp);
     
     if (isEthereal) {
       if (previewUrl) {
-        console.log('\n🌐 🌐 🌐 EMAIL PREVIEW URL (ETHEREAL) 🌐 🌐 🌐');
-        console.log('🌐', previewUrl);
-        console.log('💡 Open this URL in your browser to view the email');
-        console.log('💡 Note: Ethereal emails are for testing only - they do not send real emails');
-        console.log('💡 To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
+        console.log('\n[EMAIL] Email Preview URL (Ethereal)');
+        console.log(previewUrl);
+        console.log('Open this URL in your browser to view the email');
+        console.log('Note: Ethereal emails are for testing only - they do not send real emails');
+        console.log('To receive real emails, configure EMAIL_USER and EMAIL_PASS in .env file');
       } else {
-        console.log('⚠️  Preview URL not available (Ethereal Email limitation)');
+        console.log('[EMAIL] Preview URL not available (Ethereal Email limitation)');
       }
     } else {
-      console.log('\n📬 Email sent via Gmail SMTP');
-      console.log('📬 Message ID:', info.messageId);
-      console.log('📬 Response:', info.response);
-      console.log('✅ Check your inbox:', user.email);
-      console.log('💡 If email not received, check spam/junk folder');
+      console.log('\n[EMAIL] Email sent via Gmail SMTP');
+      console.log('Message ID:', info.messageId);
+      console.log('Response:', info.response);
+      console.log('Check your inbox:', user.email);
+      console.log('If email not received, check spam/junk folder');
     }
-    
-    console.log('═══════════════════════════════════════════════════════════════\n');
 
     return { success: true, messageId: info.messageId, previewUrl, isEthereal };
   } catch (error) {
-    console.error('\n❌ ❌ ❌ UNAUTHORIZED LOGIN ATTEMPT ALERT EMAIL ERROR ❌ ❌ ❌');
-    console.error('═══════════════════════════════════════════════════════════════');
+    console.error('\n[EMAIL] Unauthorized login attempt alert email error');
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     console.error('Error Code:', error.code);
@@ -842,7 +810,7 @@ BHOKBHOJ Security Team 🍴`,
       console.error('   3. Check Gmail "Less secure app access" or enable 2FA with App Password');
       console.error('   4. Ensure internet connection is available');
     }
-    console.error('═══════════════════════════════════════════════════════════════\n');
+    console.error('\n');
     return { success: false, error: error.message, errorCode: error.code };
   }
 };
@@ -940,7 +908,7 @@ const sendPasswordResetEmail = async (user, resetUrl, resetToken) => {
     const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) : null;
 
     console.log('\n✅ ✅ ✅ PASSWORD RESET EMAIL SENT ✅ ✅ ✅');
-    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
     console.log('📧 Type: Password Reset');
     console.log('📧 To:', user.email);
     console.log('👤 User:', user.username || 'Unknown');
@@ -963,12 +931,12 @@ const sendPasswordResetEmail = async (user, resetUrl, resetToken) => {
       console.log('💡 If email not received, check spam/junk folder');
     }
     
-    console.log('═══════════════════════════════════════════════════════════════\n');
+    console.log('\n');
 
     return { success: true, messageId: info.messageId, previewUrl, isEthereal };
   } catch (error) {
     console.error('\n❌ ❌ ❌ PASSWORD RESET EMAIL ERROR ❌ ❌ ❌');
-    console.error('═══════════════════════════════════════════════════════════════');
+    console.error('');
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     console.error('Error Code:', error.code);
@@ -995,7 +963,7 @@ const sendPasswordResetEmail = async (user, resetUrl, resetToken) => {
       console.error('   3. Check Gmail "Less secure app access" or enable 2FA with App Password');
       console.error('   4. Ensure internet connection is available');
     }
-    console.error('═══════════════════════════════════════════════════════════════\n');
+    console.error('\n');
     return { success: false, error: error.message, errorCode: error.code };
   }
 };

@@ -10,22 +10,20 @@ const mongoose = require("mongoose");
 // Create order from cart
 exports.createOrder = async (req, res) => {
     try {
-        // 🔍 BURP SUITE TESTING: Log detailed request information
-        console.log('\n🔍 CREATE ORDER REQUEST INTERCEPTED (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('📍 Method:', req.method);
-        console.log('📍 Endpoint:', req.originalUrl);
-        console.log('📍 Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
-        console.log('🌐 Origin:', req.headers.origin || 'N/A');
-        console.log('🌐 Referer:', req.headers.referer || 'N/A');
-        console.log('👤 User Agent:', req.headers['user-agent'] || 'N/A');
-        console.log('🎫 Authorization Header:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
-        console.log('🔑 Content-Type:', req.headers['content-type'] || 'N/A');
-        console.log('📋 Accept:', req.headers.accept || 'N/A');
-        console.log('🌍 IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
-        console.log('🕐 Timestamp:', new Date().toISOString());
-        console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        // Log detailed request information
+        console.log('\n[ORDER] Create order request received');
+        console.log('Method:', req.method);
+        console.log('Endpoint:', req.originalUrl);
+        console.log('Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        console.log('Origin:', req.headers.origin || 'N/A');
+        console.log('Referer:', req.headers.referer || 'N/A');
+        console.log('User Agent:', req.headers['user-agent'] || 'N/A');
+        console.log('Authorization Header:', req.headers.authorization ? req.headers.authorization.substring(0, 50) + '...' : 'Missing');
+        console.log('Content-Type:', req.headers['content-type'] || 'N/A');
+        console.log('Accept:', req.headers.accept || 'N/A');
+        console.log('IP Address:', req.ip || req.connection.remoteAddress || 'N/A');
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('Request Body:', JSON.stringify(req.body, null, 2));
         
         const userId = req.user._id;
         
@@ -36,14 +34,13 @@ exports.createOrder = async (req, res) => {
             cartDetails = null // Cart details from frontend for Burp Suite visibility
         } = req.body;
         
-        // 🔍 BURP SUITE TESTING: Log payment details
-        console.log('\n💳 PAYMENT DETAILS (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('💳 Payment Method:', paymentMethod);
-        console.log('💳 Payment Service:', paymentService || 'N/A (Cash on Delivery)');
-        console.log('💳 Payment Type:', paymentMethod === 'online' ? 'Online Payment' : 'Cash on Delivery');
+        // Log payment details
+        console.log('\n[ORDER] Payment details');
+        console.log('Payment Method:', paymentMethod);
+        console.log('Payment Service:', paymentService || 'N/A (Cash on Delivery)');
+        console.log('Payment Type:', paymentMethod === 'online' ? 'Online Payment' : 'Cash on Delivery');
         if (cartDetails) {
-            console.log('🛒 Cart Details from Request:');
+            console.log('Cart Details from Request:');
             console.log('   Total Items:', cartDetails.totalItems || cartDetails.totalQuantity || 'N/A');
             console.log('   Total Quantity:', cartDetails.totalQuantity || 'N/A');
             console.log('   Total Price:', cartDetails.totalPrice || 'N/A', 'NPR');
@@ -59,7 +56,6 @@ exports.createOrder = async (req, res) => {
                 });
             }
         }
-        console.log('═══════════════════════════════════════════════════════════════\n');
 
         // Get user's profile to use their address
         const user = await User.findById(userId);
@@ -97,12 +93,11 @@ exports.createOrder = async (req, res) => {
         console.log("Cart found:", cart ? "Yes" : "No");
         if (cart) {
             console.log("Cart items count:", cart.items.length);
-            console.log('\n🛒 CART DETAILS (BURP SUITE):');
-            console.log('═══════════════════════════════════════════════════════════════');
-            console.log('🛒 Cart ID:', cart._id);
-            console.log('👤 Cart User ID:', cart.userId);
-            console.log('📦 Total Cart Items:', cart.items.length);
-            console.log('🛒 Cart Items Details:');
+            console.log('\n[ORDER] Cart details');
+            console.log('Cart ID:', cart._id);
+            console.log('Cart User ID:', cart.userId);
+            console.log('Total Cart Items:', cart.items.length);
+            console.log('Cart Items Details:');
             cart.items.forEach((item, index) => {
                 console.log(`   Cart Item ${index + 1}:`);
                 console.log(`      Product ID: ${item.productId?._id || item.productId || 'N/A'}`);
@@ -119,7 +114,7 @@ exports.createOrder = async (req, res) => {
                 return sum + ((item.quantity || 0) * (item.price || 0));
             }, 0);
             console.log('💰 Cart Subtotal:', cartSubtotal, 'NPR');
-            console.log('═══════════════════════════════════════════════════════════════\n');
+            console.log('\n');
         }
 
         if (!cart || cart.items.length === 0) {
@@ -422,7 +417,7 @@ exports.createOrder = async (req, res) => {
         }
         
         console.log('\n💳 PAYMENT RECORD CREATION (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('');
         console.log('💳 Payment Mode:', paymentmodeValue);
         console.log('💳 Original Payment Method:', order.paymentMethod);
         console.log('💳 Payment Service:', paymentService || 'N/A (Cash on Delivery)');
@@ -433,7 +428,7 @@ exports.createOrder = async (req, res) => {
         console.log('💳 Customer Name:', user.fullname || user.username || 'N/A');
         console.log('💳 Customer Phone:', user.phone || 'N/A');
         console.log('💳 Customer Address:', user.address || 'N/A');
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        console.log('\n');
         
         const payment = new PaymentMethod({
             food: order.items.map(i => i.productName).join(", "),
@@ -476,7 +471,7 @@ exports.createOrder = async (req, res) => {
 
         // 🔍 BURP SUITE TESTING: Log detailed response information
         console.log('\n✅ CREATE ORDER RESPONSE SENT (BURP SUITE):');
-        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('');
         console.log('🆔 Order ID:', order._id);
         console.log('👤 User ID:', userId);
         console.log('👤 Username:', user.username || 'N/A');
@@ -509,7 +504,7 @@ exports.createOrder = async (req, res) => {
         console.log('⏰ Estimated Delivery Time:', estimatedDeliveryTime.toISOString());
         console.log('🕐 Order Created At:', new Date().toISOString());
         console.log('🕐 Response Timestamp:', new Date().toISOString());
-        console.log('═══════════════════════════════════════════════════════════════\n');
+        console.log('\n');
 
         console.log("=== Order Creation Completed Successfully ===");
         

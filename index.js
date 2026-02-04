@@ -71,6 +71,7 @@ if (envConfig.validation.errors.length > 0 || envConfig.validation.warnings.leng
 }
 
 const express=require("express")
+const mongoose = require("mongoose")
 const connectDB=require("./config/db")
 const logger = require("./config/logger")
 const { auditMiddleware } = require("./middlewares/auditMiddleware")
@@ -454,6 +455,20 @@ app.use(auditMiddleware)
 
 //2 new implementations
 connectDB()
+
+// ✅ SECURE ADMIN INITIALIZATION: Initialize default admin user on server startup
+// This ensures admin_aadarsha/admin_password is always available in the database
+const { initializeAdmin } = require('./utils/initializeAdmin');
+
+// Initialize admin user after database connection is established
+// Using mongoose connection event to ensure DB is ready
+mongoose.connection.once('open', async () => {
+  console.log('🔐 Initializing default admin user...');
+  // Small delay to ensure all models are registered
+  setTimeout(async () => {
+    await initializeAdmin();
+  }, 500);
+});
 
 // Auth routes
 app.use("/api/auth",userRoutes)

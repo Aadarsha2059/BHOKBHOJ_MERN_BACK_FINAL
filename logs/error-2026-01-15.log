@@ -1,0 +1,2 @@
+{"ip":"127.0.0.1","level":"error","message":"GET /api/admin/audit/stats","responseTime":184,"service":"bhokbhoj-api","statusCode":500,"timestamp":"2026-01-15 21:18:41","userId":"6965e256fadd9e6af8ae45a2"}
+{"ip":"127.0.0.1","level":"error","message":"GET /api/admin/audit/stats","responseTime":358,"service":"bhokbhoj-api","statusCode":500,"timestamp":"2026-01-15 21:18:41","userId":"6965e256fadd9e6af8ae45a2"}
